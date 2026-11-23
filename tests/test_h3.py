@@ -278,3 +278,19 @@ async def test_rate_limit_issue(
     mock_client.get_latest.side_effect = lambda *_, **__: load_latest()
     await _tick(hass, freezer, 1800)
     assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_backend_without_event_feed(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    mock_client.get_events.side_effect = IMatrixNotFoundError("404")
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_config_entry.state is ConfigEntryState.LOADED
+    await _tick(hass, freezer)
+    assert mock_client.get_events.await_count == 1  # never polled without a cursor
+    assert hass.states.get("event.truck_12_fault_codes").state == STATE_UNKNOWN

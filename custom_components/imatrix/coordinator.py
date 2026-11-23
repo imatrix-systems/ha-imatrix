@@ -126,6 +126,10 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         """Start the event cursor at the newest event, so old events never replay."""
         try:
             self._event_cursor = (await self.client.get_events()).next_after
+        except IMatrixNotFoundError:
+            # Backend without the event feed: entities from events stay idle.
+            _LOGGER.info("The iMatrix server has no event feed; events are off")
+            self._event_cursor = None
         except (IMatrixAuthError, IMatrixPermissionError) as err:
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN, translation_key="invalid_auth"
