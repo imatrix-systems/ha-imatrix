@@ -1,0 +1,13 @@
+{
+  "domain": "imatrix",
+  "name": "iMatrix",
+  "codeowners": ["@greg-phillips"],
+  "config_flow": true,
+  "documentation": "https://github.com/imatrix-systems/ha-imatrix",
+  "integration_type": "hub",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/imatrix-systems/ha-imatrix/issues",
+  "loggers": ["pyimatrix"],
+  "requirements": [],
+  "version": "0.0.1"
+}

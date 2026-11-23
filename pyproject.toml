@@ -1,0 +1,36 @@
+[project]
+name = "ha-imatrix"
+version = "0.0.1"
+requires-python = ">=3.14.2"
+
+[dependency-groups]
+dev = [
+  "pytest-homeassistant-custom-component==0.13.375",
+  "syrupy",
+  "ruff>=0.8",
+  "mypy>=1.13",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--cov=custom_components.imatrix --cov-report=term-missing --cov-fail-under=95"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "S", "PL", "RUF", "D", "SIM", "PTH"]
+ignore = ["D203", "D213", "PLR2004"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "D", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+ignore_missing_imports = true

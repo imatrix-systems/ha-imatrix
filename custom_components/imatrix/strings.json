@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to iMatrix",
+        "description": "Enter an iMatrix API key created with the Home Assistant (read-only) preset in Account Settings.",
+        "data": {
+          "api_key": "[%key:common::config_flow::data::api_key%]"
+        },
+        "data_description": {
+          "api_key": "The key starts with imx_ and is shown once when you create it."
+        }
+      }
+    }
+  }
+}
