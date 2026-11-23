@@ -20,3 +20,21 @@ are the globe mark from `frontend/src/assets/icons/logos/iMatrix.svg`, trimmed a
 transparent square. `brand/logo*.png` come from `iMatrix_logo_with_name.svg`. `dark_logo*.png` are the
 same SVG with the wordmark fill changed from #666 to #e2e2e2 so it reads on dark themes. The globe
 reads on dark backgrounds, so there is no `dark_icon.png`.
+
+## 2026-11-23: which channels become entities
+
+Spec 817 FR-H3 says "include unmapped channels" defaults off. Environmental probes arrive unmapped
+(`key = s<sensorId>`) with a quantity kind, and hiding them would hide the product. The rule is:
+
+- Mapped keys always become entities. Engine detail keys and telematics event flags start disabled.
+- Unmapped scalar channels with a quantity kind become entities. They start enabled on environmental
+  and gateway devices, and disabled on vehicles, which carry hundreds of CAN signals.
+- Unmapped channels with no quantity kind, and unmapped stateful channels, are created only with the
+  option on.
+- A percentage channel whose name contains "batt" gets the battery device class. The API has no
+  battery key yet; remove this when B1 seeds one.
+
+## 2026-11-23: new devices are added from a coordinator listener
+
+New-device callbacks run as coordinator listeners, so platforms read the snapshot that contains the
+new device. Calling them inside `_async_update_data` would run before `coordinator.data` is replaced.

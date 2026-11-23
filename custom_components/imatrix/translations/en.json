@@ -74,6 +74,169 @@
     },
     "cannot_connect": {
       "message": "Could not connect to the iMatrix cloud."
+    },
+    "update_failed": {
+      "message": "Could not get data from the iMatrix cloud."
+    },
+    "rate_limited": {
+      "message": "The iMatrix cloud rate limit was reached. Polling slows down until it recovers."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "odometer": {
+        "name": "Odometer"
+      },
+      "engine_hours": {
+        "name": "Engine hours"
+      },
+      "vehicle_speed": {
+        "name": "Speed"
+      },
+      "gps_speed": {
+        "name": "GPS speed"
+      },
+      "engine_rpm": {
+        "name": "Engine speed"
+      },
+      "fuel_level": {
+        "name": "Fuel level"
+      },
+      "def_level": {
+        "name": "DEF level"
+      },
+      "module_voltage": {
+        "name": "Battery voltage"
+      },
+      "coolant_temperature": {
+        "name": "Coolant temperature"
+      },
+      "oil_temperature": {
+        "name": "Oil temperature"
+      },
+      "intake_air_temperature": {
+        "name": "Intake air temperature"
+      },
+      "engine_load": {
+        "name": "Engine load"
+      },
+      "fuel_rate": {
+        "name": "Fuel rate"
+      },
+      "throttle_position": {
+        "name": "Throttle position"
+      },
+      "timing_advance": {
+        "name": "Timing advance"
+      },
+      "altitude": {
+        "name": "Altitude"
+      },
+      "hdop": {
+        "name": "GPS HDOP"
+      },
+      "satellites": {
+        "name": "GPS satellites"
+      },
+      "heading": {
+        "name": "Heading"
+      },
+      "idle_time": {
+        "name": "Idle time"
+      },
+      "speeding": {
+        "name": "Speeding"
+      },
+      "idle_state": {
+        "name": "Idle"
+      },
+      "vehicle_stopped": {
+        "name": "Stopped"
+      },
+      "hard_brake": {
+        "name": "Hard braking"
+      },
+      "hard_acceleration": {
+        "name": "Hard acceleration"
+      },
+      "hard_turn": {
+        "name": "Hard turn"
+      },
+      "hard_bump": {
+        "name": "Hard bump"
+      },
+      "hard_pothole": {
+        "name": "Pothole"
+      },
+      "hard_impact": {
+        "name": "Impact"
+      },
+      "connectivity": {
+        "name": "Connectivity",
+        "state": {
+          "online": "Online",
+          "asleep": "Asleep",
+          "late": "Late",
+          "offline": "Offline",
+          "never": "Never connected"
+        }
+      },
+      "last_seen": {
+        "name": "Last seen"
+      }
+    },
+    "binary_sensor": {
+      "ignition": {
+        "name": "Ignition"
+      },
+      "moving": {
+        "name": "Moving"
+      },
+      "channel_alarm": {
+        "name": "{channel} alarm",
+        "state_attributes": {
+          "level": {
+            "name": "Level",
+            "state": {
+              "none": "None",
+              "advisory": "Advisory",
+              "warning": "Warning",
+              "alarm": "Alarm",
+              "unknown": "Unknown"
+            }
+          },
+          "side": {
+            "name": "Threshold",
+            "state": {
+              "low": "Low",
+              "high": "High",
+              "unknown": "Unknown"
+            }
+          }
+        }
+      }
+    },
+    "device_tracker": {
+      "location": {
+        "name": "Location"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "iMatrix options",
+        "data": {
+          "group_ids": "Groups",
+          "scan_interval": "Polling interval",
+          "include_unmapped": "Include unmapped channels"
+        },
+        "data_description": {
+          "group_ids": "Import only devices in these iMatrix groups and their subgroups. Leave empty for all devices.",
+          "scan_interval": "How often to ask the iMatrix cloud for new readings, in seconds.",
+          "include_unmapped": "Also create entities for channels iMatrix has no unit or meaning for. They start disabled."
+        }
+      }
     }
   }
 }

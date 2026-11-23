@@ -1,0 +1,34 @@
+[
+ {"sn": 1000000001, "name": "Truck 12", "kind": "vehicle", "productId": 900001, "productName": "QConnect FC-202",
+  "platformType": "cellular", "firmware": "2.0.40", "groupId": 10, "groupPath": "Fleet / North", "viaSn": null, "viaSeenAt": null,
+  "connectivity": {"state": "online", "lastSeen": "2026-11-23T14:59:02Z", "nextExpected": null},
+  "channels": [
+   {"sensorId": 64, "key": "odometer", "name": "Odometer", "quantityKind": "distance", "unit": "km", "dataType": "float", "mode": "scalar"},
+   {"sensorId": 617, "key": "s617", "name": "Odometer (CAN)", "quantityKind": "distance", "unit": "km", "dataType": "float", "mode": "scalar"},
+   {"sensorId": 142, "key": "vehicle_speed", "name": "Speed", "quantityKind": "speed", "unit": "km/h", "dataType": "float", "mode": "scalar"},
+   {"sensorId": 150, "key": "coolant_temperature", "name": "Coolant", "quantityKind": "temperature", "unit": "°C", "dataType": "float", "mode": "scalar"},
+   {"sensorId": 2, "key": "latitude", "name": "Latitude", "quantityKind": "angle", "unit": "degrees", "dataType": "float", "mode": "scalar"},
+   {"sensorId": 93, "key": "ignition", "name": "Ignition", "quantityKind": null, "unit": null, "dataType": "uint", "mode": "stateful",
+    "states": [{"value": 0, "label": "Off"}, {"value": 1, "label": "On"}]},
+   {"sensorId": 300, "key": "hard_brake", "name": "Hard brake", "quantityKind": null, "unit": null, "dataType": "uint", "mode": "stateful",
+    "states": [{"value": 0, "label": "No"}, {"value": 1, "label": "Yes"}]},
+   {"sensorId": 250900, "key": "s250900", "name": "CAN Gear", "quantityKind": null, "unit": "gear", "dataType": "uint", "mode": "scalar"},
+   {"sensorId": 250901, "key": "s250901", "name": "Door state", "quantityKind": null, "unit": null, "dataType": "uint", "mode": "stateful",
+    "states": [{"value": 0, "label": "Closed"}, {"value": 1, "label": null}]}
+  ]},
+ {"sn": 1000000002, "name": "Freezer 3", "kind": "environmental", "productId": 900002, "productName": "BLE Temp Probe",
+  "platformType": "ble", "firmware": null, "groupId": 11, "groupPath": "Depot", "viaSn": 1000000001, "viaSeenAt": "2026-11-23T14:58:40Z",
+  "connectivity": {"state": "asleep", "lastSeen": "2026-11-23T11:00:00Z", "nextExpected": null},
+  "channels": [
+   {"sensorId": 250001, "key": "s250001", "name": "Probe 1", "quantityKind": "temperature", "unit": "°C", "dataType": "float", "mode": "scalar"},
+   {"sensorId": 250002, "key": "s250002", "name": "Probe 2", "quantityKind": "temperature", "unit": "°C", "dataType": "float", "mode": "scalar"},
+   {"sensorId": 250003, "key": "s250003", "name": "Battery", "quantityKind": "percentage", "unit": "%", "dataType": "float", "mode": "scalar"},
+   {"sensorId": 250004, "key": "s250004", "name": null, "quantityKind": "humidity", "unit": "%", "dataType": "float", "mode": "scalar"}
+  ]},
+ {"sn": 1000000003, "name": null, "kind": "environmental", "productId": null, "productName": null,
+  "platformType": "wifi", "firmware": "1.0", "groupId": null, "groupPath": null, "viaSn": 1999999999, "viaSeenAt": null,
+  "connectivity": {"state": "offline", "lastSeen": "2026-11-01T00:00:00Z", "nextExpected": null},
+  "channels": [
+   {"sensorId": 250010, "key": "s250010", "name": "Room", "quantityKind": "temperature", "unit": "°C", "dataType": "float", "mode": "scalar"}
+  ]}
+]
