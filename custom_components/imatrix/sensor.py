@@ -124,6 +124,10 @@ DEFAULT_PRECISION = {SensorDeviceClass.TEMPERATURE: 1, SensorDeviceClass.HUMIDIT
 def _should_create(channel: Channel, include_unmapped: bool) -> bool:
     if channel.key in SKIP_KEYS:
         return False
+    # Too many states to list (for example the OBD-II DTC sensor). Faults come
+    # from the fault-code endpoint instead.
+    if channel.mode is ChannelMode.STATEFUL and not channel.states:
+        return False
     if channel.is_mapped:
         return True
     if channel.mode is ChannelMode.STATEFUL:

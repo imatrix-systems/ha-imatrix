@@ -14,7 +14,8 @@
     "states": [{"value": 0, "label": "No"}, {"value": 1, "label": "Yes"}]},
    {"sensorId": 250900, "key": "s250900", "name": "CAN Gear", "quantityKind": null, "unit": "gear", "dataType": "uint", "mode": "scalar"},
    {"sensorId": 250901, "key": "s250901", "name": "Door state", "quantityKind": null, "unit": null, "dataType": "uint", "mode": "stateful",
-    "states": [{"value": 0, "label": "Closed"}, {"value": 1, "label": null}]}
+    "states": [{"value": 0, "label": "Closed"}, {"value": 1, "label": null}]},
+   {"sensorId": 534, "key": "s534", "name": "OBD-II DTC", "quantityKind": null, "unit": null, "dataType": "uint", "mode": "stateful", "stateCount": 12128}
   ]},
  {"sn": 1000000002, "name": "Freezer 3", "kind": "environmental", "productId": 900002, "productName": "BLE Temp Probe",
   "platformType": "ble", "firmware": null, "groupId": 11, "groupPath": "Depot", "viaSn": 1000000001, "viaSeenAt": "2026-11-23T14:58:40Z",

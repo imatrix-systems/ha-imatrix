@@ -53,6 +53,8 @@ async def test_options_flow(
     assert registry.async_get_entity_id("sensor", DOMAIN, "1000000001_250900")
     door = registry.async_get_entity_id("sensor", DOMAIN, "1000000001_250901")
     assert door is not None
+    # A stateful channel sent without its state list is never an entity.
+    assert registry.async_get_entity_id("sensor", DOMAIN, "1000000001_534") is None
 
 
 async def test_stateful_enum_sensor(
