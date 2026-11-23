@@ -19,5 +19,3 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # Brand PNGs are pending (spec 817 Q3, Echelon T49). Remove this once brand/ exists.
-          ignore: brands
