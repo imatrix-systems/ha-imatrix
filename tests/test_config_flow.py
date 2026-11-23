@@ -1,4 +1,5 @@
-from unittest.mock import MagicMock
+from collections.abc import Generator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import SOURCE_USER
@@ -17,6 +18,15 @@ from custom_components.imatrix.const import CONF_BASE_URL, DEFAULT_BASE_URL, DOM
 from .conftest import FAKE_KEY, make_account
 
 NEW_KEY = "imx_11111111_newnewnewnewnewnewnewnewnewnewnewne"
+
+
+@pytest.fixture(autouse=True)
+def mock_setup_entry() -> Generator[AsyncMock]:
+    """Flows here create or reload entries; setting them up is tested elsewhere."""
+    with patch(
+        "custom_components.imatrix.async_setup_entry", return_value=True
+    ) as mock:
+        yield mock
 
 
 def _input(key: str = FAKE_KEY, base_url: str = DEFAULT_BASE_URL) -> dict:
