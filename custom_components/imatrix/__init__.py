@@ -10,7 +10,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import dt as dt_util
 from pyimatrix import (
     Account,
     IMatrixAuthError,
@@ -19,7 +21,7 @@ from pyimatrix import (
     IMatrixPermissionError,
 )
 
-from .const import CONF_BASE_URL, DOMAIN
+from .const import CONF_BASE_URL, DOMAIN, KEY_EXPIRY_WARNING
 from .coordinator import IMatrixCoordinator
 from .helpers import create_api_key_client
 from .services import async_setup_services
@@ -29,6 +31,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.DEVICE_TRACKER,
+    Platform.EVENT,
     Platform.SENSOR,
 ]
 
@@ -67,6 +70,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> b
             translation_domain=DOMAIN, translation_key="cannot_connect"
         ) from err
 
+    _check_key_expiry(hass, entry, account)
     coordinator = IMatrixCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
 
@@ -89,4 +93,27 @@ async def async_remove_config_entry_device(
     return not any(
         (DOMAIN, str(sn)) in device_entry.identifiers
         for sn in entry.runtime_data.coordinator.data.devices
+    )
+
+
+def _check_key_expiry(
+    hass: HomeAssistant, entry: IMatrixConfigEntry, account: Account
+) -> None:
+    """Raise a repair issue 14 days before the API key expires."""
+    issue_id = f"api_key_expiring_{entry.entry_id}"
+    expires = account.expires_at
+    if expires is None or expires - dt_util.utcnow() > KEY_EXPIRY_WARNING:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="api_key_expiring",
+        translation_placeholders={
+            "title": entry.title,
+            "date": dt_util.as_local(expires).date().isoformat(),
+        },
     )

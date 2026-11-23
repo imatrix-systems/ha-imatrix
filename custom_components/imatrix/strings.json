@@ -195,6 +195,9 @@
       },
       "last_seen": {
         "name": "Last seen"
+      },
+      "active_faults": {
+        "name": "Active fault codes"
       }
     },
     "binary_sensor": {
@@ -226,11 +229,62 @@
             }
           }
         }
+      },
+      "fault_present": {
+        "name": "Fault code present"
+      },
+      "lamp_mil": {
+        "name": "Malfunction lamp"
+      },
+      "lamp_red_stop": {
+        "name": "Red stop lamp"
+      },
+      "lamp_amber": {
+        "name": "Amber warning lamp"
+      },
+      "lamp_protect": {
+        "name": "Protect lamp"
       }
     },
     "device_tracker": {
       "location": {
         "name": "Location"
+      }
+    },
+    "event": {
+      "faults": {
+        "name": "Fault codes",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "set": "Set",
+              "cleared": "Cleared"
+            }
+          }
+        }
+      },
+      "geofence": {
+        "name": "Geofence",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "enter": "Entered",
+              "exit": "Left",
+              "dwell": "Dwelling"
+            }
+          }
+        }
+      },
+      "alert": {
+        "name": "iMatrix alert",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "raised": "Raised",
+              "resolved": "Resolved"
+            }
+          }
+        }
       }
     }
   },
@@ -297,6 +351,20 @@
           "description": "End of the period. Defaults to now."
         }
       }
+    }
+  },
+  "issues": {
+    "api_key_expiring": {
+      "title": "iMatrix API key expires soon",
+      "description": "The API key for {title} expires on {date}. Create a new key in the iMatrix web app and enter it with Reconfigure on the iMatrix integration."
+    },
+    "rate_limited": {
+      "title": "iMatrix rate limit reached",
+      "description": "{title} has been rate limited by the iMatrix cloud for more than 30 minutes. Raise the polling interval in the integration options, or select fewer groups."
+    },
+    "no_devices": {
+      "title": "iMatrix API key sees no devices",
+      "description": "The API key for {title} cannot see any devices. Check the groups selected in the integration options and the groups granted to the key's user in iMatrix."
     }
   }
 }

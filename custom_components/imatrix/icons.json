@@ -39,6 +39,12 @@
       },
       "last_seen": {
         "default": "mdi:clock-check-outline"
+      },
+      "active_faults": {
+        "default": "mdi:car-wrench",
+        "range": {
+          "0": "mdi:car-cog"
+        }
       }
     },
     "binary_sensor": {
@@ -59,6 +65,35 @@
         "state": {
           "off": "mdi:check-circle-outline"
         }
+      },
+      "fault_present": {
+        "default": "mdi:engine-off-outline",
+        "state": {
+          "off": "mdi:engine-outline"
+        }
+      },
+      "lamp_mil": {
+        "default": "mdi:engine-outline"
+      },
+      "lamp_amber": {
+        "default": "mdi:engine-outline"
+      },
+      "lamp_red_stop": {
+        "default": "mdi:car-brake-alert"
+      },
+      "lamp_protect": {
+        "default": "mdi:shield-alert-outline"
+      }
+    },
+    "event": {
+      "faults": {
+        "default": "mdi:car-wrench"
+      },
+      "geofence": {
+        "default": "mdi:map-marker-radius"
+      },
+      "alert": {
+        "default": "mdi:bell-alert-outline"
       }
     }
   },

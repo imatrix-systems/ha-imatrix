@@ -33,7 +33,7 @@ from homeassistant.helpers.typing import StateType
 from pyimatrix import Channel, ChannelMode, ConnectivityState, DeviceKind
 
 from . import IMatrixConfigEntry
-from .const import CONF_INCLUDE_UNMAPPED
+from .const import CONF_INCLUDE_UNMAPPED, MAX_FAULT_CODES
 from .coordinator import IMatrixCoordinator
 from .entity import IMatrixEntity
 
@@ -144,6 +144,8 @@ def build_sensors(
         device = coordinator.data.devices[sn]
         entities.append(IMatrixConnectivitySensor(coordinator, sn))
         entities.append(IMatrixLastSeenSensor(coordinator, sn))
+        if device.kind is DeviceKind.VEHICLE:
+            entities.append(IMatrixActiveFaultsSensor(coordinator, sn))
         entities.extend(
             IMatrixChannelSensor(coordinator, sn, channel)
             for channel in device.channels
@@ -290,3 +292,33 @@ class IMatrixLastSeenSensor(IMatrixEntity, SensorEntity):
         """Return the last check-in time."""
         connectivity = self.connectivity
         return connectivity.last_seen if connectivity else None
+
+
+class IMatrixActiveFaultsSensor(IMatrixEntity, SensorEntity):
+    """Number of active fault codes, with the codes as an attribute."""
+
+    _attr_translation_key = "active_faults"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: IMatrixCoordinator, sn: int) -> None:
+        """Create the active-faults sensor of a vehicle."""
+        super().__init__(coordinator, sn, "active_faults")
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the count, or None until the fault list has been fetched."""
+        state = self.coordinator.data.faults.get(self.sn)
+        return None if state is None else len(state.faults)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, list[str]] | None:
+        """Return up to 20 display codes, newest first."""
+        state = self.coordinator.data.faults.get(self.sn)
+        if state is None:
+            return None
+        newest = sorted(
+            state.faults.values(),
+            key=lambda f: f.set_time.timestamp() if f.set_time else 0,
+            reverse=True,
+        )
+        return {"codes": [f.display_code for f in newest[:MAX_FAULT_CODES]]}

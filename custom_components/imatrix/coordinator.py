@@ -11,15 +11,25 @@ from typing import TYPE_CHECKING
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 from pyimatrix import (
     Device,
+    DeviceKind,
     DeviceState,
+    Event,
+    EventType,
+    Fault,
     IMatrixAuthError,
     IMatrixClient,
+    IMatrixConnectionError,
     IMatrixError,
+    IMatrixNotFoundError,
     IMatrixPermissionError,
     IMatrixRateLimitError,
+    IMatrixResponseError,
+    Lamps,
 )
 
 from .const import (
@@ -28,8 +38,11 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEVICE_REFRESH_EVERY,
     DOMAIN,
+    FAULT_FETCHES_PER_POLL,
     MANUFACTURER,
     MAX_BACKOFF,
+    MAX_EVENT_PAGES,
+    RATE_LIMIT_ISSUE_AFTER,
     WEB_APP_URL,
 )
 
@@ -37,6 +50,14 @@ if TYPE_CHECKING:
     from . import IMatrixConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class FaultState:
+    """Active faults and lamps of one vehicle, kept current from the event feed."""
+
+    lamps: Lamps | None
+    faults: dict[str, Fault]
 
 
 @dataclass
@@ -47,6 +68,9 @@ class IMatrixSnapshot:
     states: dict[int, DeviceState]
     server_time: datetime | None = None
     group_paths: dict[int, str] = field(default_factory=dict)
+    faults: dict[int, FaultState] = field(default_factory=dict)
+    # Events read in this update only, oldest first. Entities dedupe by id.
+    events: tuple[Event, ...] = ()
 
 
 class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
@@ -71,9 +95,11 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         self.client = client
         self._since_refresh = 0
         self._force_refresh = False
+        self._known: set[int] = set()
+        self._event_cursor: int | None = None
+        self._rate_limited_since: datetime | None = None
         # sns first seen in the latest update. Empty when nothing is new.
         self.new_sns: set[int] = set()
-        self._known: set[int] = set()
 
     @property
     def _group_ids(self) -> list[int] | None:
@@ -96,6 +122,19 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
 
         return self.async_add_listener(on_update)
 
+    async def _async_setup(self) -> None:
+        """Start the event cursor at the newest event, so old events never replay."""
+        try:
+            self._event_cursor = (await self.client.get_events()).next_after
+        except (IMatrixAuthError, IMatrixPermissionError) as err:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN, translation_key="invalid_auth"
+            ) from err
+        except IMatrixError as err:
+            raise UpdateFailed(
+                translation_domain=DOMAIN, translation_key="update_failed"
+            ) from err
+
     async def _async_update_data(self) -> IMatrixSnapshot:
         try:
             snapshot = await self._async_fetch()
@@ -113,6 +152,7 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
                 translation_domain=DOMAIN, translation_key="update_failed"
             ) from err
         self.update_interval = self._interval
+        self._clear_rate_limit()
         self._handle_device_changes(snapshot)
         return snapshot
 
@@ -142,6 +182,16 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
             if unknown := set(latest.devices) - set(devices):
                 _LOGGER.debug("Latest named %d unknown devices", len(unknown))
                 self._force_refresh = True  # re-list devices on the next poll
+
+        events = await self._async_fetch_events(devices)
+        faults = {
+            sn: f
+            for sn, f in (previous.faults if previous else {}).items()
+            if sn in devices
+        }
+        faults = _apply_events(faults, events)
+        faults = await self._async_fetch_missing_faults(devices, faults)
+
         return IMatrixSnapshot(
             devices=devices,
             states=states,
@@ -151,17 +201,90 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
                 for d in devices.values()
                 if d.group_id is not None and d.group_path
             },
+            faults=faults,
+            events=events,
         )
+
+    async def _async_fetch_events(
+        self, devices: dict[int, Device]
+    ) -> tuple[Event, ...]:
+        if self._event_cursor is None:
+            return ()
+        events: list[Event] = []
+        for _ in range(MAX_EVENT_PAGES):
+            page = await self.client.get_events(self._event_cursor)
+            self._event_cursor = page.next_after
+            events.extend(e for e in page.events if e.sn in devices)
+            if not page.has_more:
+                break
+        return tuple(events)
+
+    async def _async_fetch_missing_faults(
+        self, devices: dict[int, Device], faults: dict[int, FaultState]
+    ) -> dict[int, FaultState]:
+        """Fetch the fault list of a few vehicles per poll until all have one."""
+        missing = sorted(
+            sn
+            for sn, d in devices.items()
+            if d.kind is DeviceKind.VEHICLE and sn not in faults
+        )
+        result = dict(faults)
+        for sn in missing[:FAULT_FETCHES_PER_POLL]:
+            try:
+                fetched = await self.client.get_faults(sn)
+            except IMatrixNotFoundError, IMatrixPermissionError:
+                result[sn] = FaultState(lamps=None, faults={})
+                continue
+            except (IMatrixConnectionError, IMatrixResponseError) as err:
+                _LOGGER.debug("Fault list for one vehicle failed, retrying: %s", err)
+                continue
+            result[sn] = FaultState(
+                lamps=fetched.lamps, faults={f.id: f for f in fetched.faults}
+            )
+        return result
 
     def _back_off(self, retry_after: float | None) -> None:
         current = self.update_interval or self._interval
         wait = max(timedelta(seconds=retry_after or 0), current * 2)
         self.update_interval = min(wait, MAX_BACKOFF)
+        now = dt_util.utcnow()
+        if self._rate_limited_since is None:
+            self._rate_limited_since = now
+        elif now - self._rate_limited_since >= RATE_LIMIT_ISSUE_AFTER:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                f"rate_limited_{self.config_entry.entry_id}",
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="rate_limited",
+                translation_placeholders={"title": self.config_entry.title},
+            )
+
+    def _clear_rate_limit(self) -> None:
+        if self._rate_limited_since is not None:
+            self._rate_limited_since = None
+            ir.async_delete_issue(
+                self.hass, DOMAIN, f"rate_limited_{self.config_entry.entry_id}"
+            )
 
     @callback
     def _handle_device_changes(self, snapshot: IMatrixSnapshot) -> None:
         current = set(snapshot.devices)
         sync_device_registry(self.hass, self.config_entry, snapshot)
+        issue_id = f"no_devices_{self.config_entry.entry_id}"
+        if current:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+        else:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="no_devices",
+                translation_placeholders={"title": self.config_entry.title},
+            )
         if not self._known:
             self._known = current
             self.new_sns = set()
@@ -177,6 +300,27 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
                         device.id, remove_config_entry_id=self.config_entry.entry_id
                     )
         self._known = current
+
+
+def _apply_events(
+    faults: dict[int, FaultState], events: tuple[Event, ...]
+) -> dict[int, FaultState]:
+    """Apply dtc_set, dtc_cleared and lamp_changed to vehicles already fetched."""
+    result = dict(faults)
+    for event in events:
+        state = result.get(event.sn)
+        if state is None:
+            continue  # the first fetch for this vehicle will include it
+        if event.type is EventType.DTC_SET and (fault := event.fault):
+            result[event.sn] = FaultState(
+                state.lamps, {**state.faults, fault.id: fault}
+            )
+        elif event.type is EventType.DTC_CLEARED and (fault := event.fault):
+            remaining = {k: v for k, v in state.faults.items() if k != fault.id}
+            result[event.sn] = FaultState(state.lamps, remaining)
+        elif event.type is EventType.LAMP_CHANGED:
+            result[event.sn] = FaultState(event.lamps, state.faults)
+    return result
 
 
 @callback

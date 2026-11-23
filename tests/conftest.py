@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pyimatrix import Account, Device, Latest, Limits
+from pyimatrix import Account, Device, EventPage, Faults, Latest, Limits
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.imatrix.const import CONF_BASE_URL, DEFAULT_BASE_URL, DOMAIN
@@ -46,6 +46,11 @@ def load_latest() -> Latest:
     return Latest.from_dict(json.loads((FIXTURES / "latest.json").read_text()))
 
 
+def load_faults() -> Faults:
+    """Return the synthetic fault list of the truck."""
+    return Faults.from_dict(json.loads((FIXTURES / "faults.json").read_text()))
+
+
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations: Any) -> Generator[None]:
     """Enable loading custom_components in every test."""
@@ -59,6 +64,10 @@ def mock_client() -> Generator[MagicMock]:
     client.get_account = AsyncMock(return_value=make_account())
     client.get_devices = AsyncMock(side_effect=lambda **_: load_devices())
     client.get_latest = AsyncMock(side_effect=lambda *_, **__: load_latest())
+    client.get_events = AsyncMock(
+        return_value=EventPage(next_after=100, has_more=False, events=())
+    )
+    client.get_faults = AsyncMock(side_effect=lambda sn: load_faults())
     client.auth.rate_limit_remaining = 118
     with (
         patch("custom_components.imatrix.create_api_key_client", return_value=client),

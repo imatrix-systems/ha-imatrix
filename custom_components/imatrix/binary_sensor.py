@@ -8,7 +8,7 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.binary_sensor.const import BinarySensorDeviceClass
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from pyimatrix import AlarmLevel, Channel, ChannelMode, DeviceKind
+from pyimatrix import AlarmLevel, Channel, ChannelMode, DeviceKind, Lamps
 
 from . import IMatrixConfigEntry
 from .const import MOVING_SPEED_KMH
@@ -16,6 +16,9 @@ from .coordinator import IMatrixCoordinator
 from .entity import IMatrixEntity
 
 PARALLEL_UPDATES = 0
+
+# J1939 lamp -> enabled by default. MIL and red stop matter most to drivers.
+LAMPS = {"mil": True, "red_stop": True, "amber": False, "protect": False}
 
 
 def build_binary_sensors(
@@ -29,6 +32,11 @@ def build_binary_sensors(
             entities.append(IMatrixIgnitionSensor(coordinator, sn, ignition))
         if device.kind is DeviceKind.VEHICLE:
             entities.append(IMatrixMovingSensor(coordinator, sn))
+            entities.append(IMatrixFaultPresentSensor(coordinator, sn))
+            entities.extend(
+                IMatrixLampSensor(coordinator, sn, lamp, enabled)
+                for lamp, enabled in LAMPS.items()
+            )
         entities.extend(
             IMatrixAlarmSensor(coordinator, sn, channel)
             for channel in device.channels
@@ -146,3 +154,42 @@ class IMatrixAlarmSensor(IMatrixEntity, BinarySensorEntity):
             "level": reading.alarm.value,
             "side": reading.alarm_side.value if reading.alarm_side else None,
         }
+
+
+class IMatrixFaultPresentSensor(IMatrixEntity, BinarySensorEntity):
+    """On while the vehicle has at least one active fault code."""
+
+    _attr_translation_key = "fault_present"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(self, coordinator: IMatrixCoordinator, sn: int) -> None:
+        """Create the fault-present sensor of a vehicle."""
+        super().__init__(coordinator, sn, "fault_present")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True with any active fault, None before the first fetch."""
+        state = self.coordinator.data.faults.get(self.sn)
+        return None if state is None else bool(state.faults)
+
+
+class IMatrixLampSensor(IMatrixEntity, BinarySensorEntity):
+    """One J1939 dashboard lamp."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(
+        self, coordinator: IMatrixCoordinator, sn: int, lamp: str, enabled: bool
+    ) -> None:
+        """Bind to one lamp of a vehicle."""
+        super().__init__(coordinator, sn, f"lamp_{lamp}")
+        self._lamp = lamp
+        self._attr_translation_key = f"lamp_{lamp}"
+        self._attr_entity_registry_enabled_default = enabled
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return the lamp state. None when unknown, unavailable or reserved."""
+        state = self.coordinator.data.faults.get(self.sn)
+        lamps: Lamps | None = state.lamps if state else None
+        return None if lamps is None else getattr(lamps, self._lamp)
