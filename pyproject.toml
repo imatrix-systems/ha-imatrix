@@ -6,6 +6,7 @@ requires-python = ">=3.14.2"
 [dependency-groups]
 dev = [
   "pytest-homeassistant-custom-component==0.13.375",
+  "pyimatrix",
   "syrupy",
   "ruff>=0.8",
   "mypy>=1.13",
@@ -34,3 +35,6 @@ ignore = ["D203", "D213", "PLR2004"]
 python_version = "3.14"
 strict = true
 ignore_missing_imports = true
+
+[tool.uv.sources]
+pyimatrix = { git = "https://github.com/imatrix-systems/pyimatrix", branch = "main" }

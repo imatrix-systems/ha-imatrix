@@ -3,14 +3,77 @@
     "step": {
       "user": {
         "title": "Connect to iMatrix",
-        "description": "Enter an iMatrix API key created with the Home Assistant (read-only) preset in Account Settings.",
+        "description": "Create an API key in the iMatrix web app under Account Settings, Security, API keys, using the Home Assistant (read-only) preset.",
+        "data": {
+          "api_key": "API key"
+        },
+        "data_description": {
+          "api_key": "The key starts with imx_ and is shown once when you create it."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "data": {
+              "base_url": "API URL"
+            },
+            "data_description": {
+              "base_url": "Leave as is unless iMatrix support gave you a different address."
+            }
+          }
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate integration",
+        "description": "iMatrix rejected the API key for {org}. Enter a new key for the same organization.",
         "data": {
           "api_key": "API key"
         },
         "data_description": {
           "api_key": "The key starts with imx_ and is shown once when you create it."
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure iMatrix",
+        "description": "Change the API key or API URL. The key must belong to the same organization.",
+        "data": {
+          "api_key": "API key"
+        },
+        "data_description": {
+          "api_key": "The key starts with imx_ and is shown once when you create it."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "data": {
+              "base_url": "API URL"
+            },
+            "data_description": {
+              "base_url": "Leave as is unless iMatrix support gave you a different address."
+            }
+          }
+        }
       }
+    },
+    "error": {
+      "invalid_auth": "Invalid authentication",
+      "cannot_connect": "Failed to connect",
+      "insufficient_permissions": "The API key cannot read devices or sensor data. Create a key with the Home Assistant (read-only) preset.",
+      "unsupported_api": "The iMatrix server returned an API version this integration does not support. Update the integration.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Account is already configured",
+      "reauth_successful": "Re-authentication was successful",
+      "reconfigure_successful": "Re-configuration was successful",
+      "wrong_account": "The API key belongs to a different iMatrix organization."
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "iMatrix rejected the API key."
+    },
+    "cannot_connect": {
+      "message": "Could not connect to the iMatrix cloud."
     }
   }
 }

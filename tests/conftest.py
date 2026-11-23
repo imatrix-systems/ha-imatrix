@@ -1,14 +1,34 @@
 """Fixtures for iMatrix tests."""
 
 from collections.abc import Generator
+from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pyimatrix import Account, Limits
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.imatrix.const import CONF_BASE_URL, DEFAULT_BASE_URL, DOMAIN
 
 FAKE_KEY = "imx_00000000_fakefakefakefakefakefakefakefakefake"
+ORG_ID = 4242
+
+
+def make_account(org_id: int = ORG_ID, permissions: set[str] | None = None) -> Account:
+    """Return a synthetic account."""
+    return Account(
+        org_id=org_id,
+        org_name="Example Cold Chain",
+        key_prefix="00000000",
+        permissions=frozenset(
+            permissions
+            if permissions is not None
+            else {"device:read", "sensor_data:read", "group:read"}
+        ),
+        expires_at=datetime(2027, 6, 1, tzinfo=UTC),
+        limits=Limits(requests_per_minute=120, stream_connections=5),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -18,11 +38,28 @@ def auto_enable_custom_integrations(enable_custom_integrations: Any) -> Generato
 
 
 @pytest.fixture
+def mock_client() -> Generator[MagicMock]:
+    """Patch client creation in setup and the config flow."""
+    client = MagicMock()
+    client.get_account = AsyncMock(return_value=make_account())
+    with (
+        patch("custom_components.imatrix.create_api_key_client", return_value=client),
+        patch(
+            "custom_components.imatrix.config_flow.create_api_key_client",
+            return_value=client,
+        ) as factory,
+    ):
+        client.factory = factory
+        yield client
+
+
+@pytest.fixture
 def mock_config_entry() -> MockConfigEntry:
     """Return a config entry with fake credentials."""
     return MockConfigEntry(
         domain=DOMAIN,
-        title="iMatrix",
+        title="Example Cold Chain",
+        unique_id=str(ORG_ID),
         data={"api_key": FAKE_KEY, CONF_BASE_URL: DEFAULT_BASE_URL},
         version=1,
         minor_version=1,

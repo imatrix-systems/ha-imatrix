@@ -8,6 +8,6 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/imatrix-systems/ha-imatrix/issues",
   "loggers": ["pyimatrix"],
-  "requirements": [],
+  "requirements": ["pyimatrix==0.1.0"],
   "version": "0.0.1"
 }
