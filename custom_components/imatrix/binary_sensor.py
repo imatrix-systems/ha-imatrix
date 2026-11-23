@@ -17,6 +17,10 @@ from .entity import IMatrixEntity
 
 PARALLEL_UPDATES = 0
 
+# Thresholds matter for environmental readings; other channels skip the alarm
+# entity to keep large fleets from creating thousands of disabled entities.
+ALARM_QUANTITIES = frozenset({"temperature", "humidity", "pressure", "concentration"})
+
 # J1939 lamp -> enabled by default. MIL and red stop matter most to drivers.
 LAMPS = {"mil": True, "red_stop": True, "amber": False, "protect": False}
 
@@ -41,8 +45,7 @@ def build_binary_sensors(
             IMatrixAlarmSensor(coordinator, sn, channel)
             for channel in device.channels
             if channel.mode is ChannelMode.SCALAR
-            and channel.quantity_kind
-            and (channel.is_mapped or device.kind is not DeviceKind.VEHICLE)
+            and channel.quantity_kind in ALARM_QUANTITIES
         )
     return entities
 

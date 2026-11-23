@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to iMatrix",
-        "description": "Create an API key in the iMatrix web app under Account Settings, Security, API keys, using the Home Assistant (read-only) preset.",
+        "description": "Create an API key in the iMatrix web app under Account Settings, Security, API keys, using the Home Assistant (read-only) preset. The key sees only the devices in groups granted to your user.",
         "data": {
           "api_key": "API key"
         },
@@ -364,7 +364,7 @@
     },
     "no_devices": {
       "title": "iMatrix API key sees no devices",
-      "description": "The API key for {title} cannot see any devices. Check the groups selected in the integration options and the groups granted to the key's user in iMatrix."
+      "description": "The API key for {title} cannot see any devices. An iMatrix API key sees only the devices in groups granted to the key's user, even when the user is an organization administrator. Grant the user access to the groups in iMatrix, then check the groups selected in the integration options."
     }
   }
 }

@@ -38,3 +38,20 @@ Spec 817 FR-H3 says "include unmapped channels" defaults off. Environmental prob
 
 New-device callbacks run as coordinator listeners, so platforms read the snapshot that contains the
 new device. Calling them inside `_async_update_data` would run before `coordinator.data` is replaced.
+
+## 2026-11-23: live check on cloud-dev, and what changed because of it
+
+First run of the real integration against api-dev (Greg's test org, read-only key, 695 devices:
+195 shipping-label and solar trackers, 300 simulated FC-201 vehicles, 200 simulated NEO-1 probes).
+Setup loaded with 115 of 120 requests per minute left after the first poll.
+
+- Alarm binary sensors are now created only for temperature, humidity, pressure and concentration
+  channels. Before, the run created 9,879 binary sensors, most of them disabled alarm entities on
+  accelerometer and voltage channels.
+- A key sees only devices in groups granted to its user, even for an org administrator (backend ACL:
+  org-wide visibility needs `org:manage`, which the read-only preset does not grant). The setup text
+  and the `no_devices` repair say so.
+- `kind` does not gate GPS or ignition entities: a tracker is created for any device with a latitude
+  channel and the ignition sensor for any device with an ignition channel. Kind only gates
+  vehicle-only entities (moving, faults, lamps).
+- `/events` answers 404 until backend B3 deploys; the integration treats that as "no event feed".
