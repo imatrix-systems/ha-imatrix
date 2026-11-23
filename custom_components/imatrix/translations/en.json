@@ -80,6 +80,18 @@
     },
     "rate_limited": {
       "message": "The iMatrix cloud rate limit was reached. Polling slows down until it recovers."
+    },
+    "device_not_found": {
+      "message": "The device is not an iMatrix device."
+    },
+    "entry_not_loaded": {
+      "message": "The iMatrix integration for this device is not loaded."
+    },
+    "entity_not_channel": {
+      "message": "{entity_id} is not an iMatrix sensor channel."
+    },
+    "api_error": {
+      "message": "The iMatrix cloud could not answer the request."
     }
   },
   "entity": {
@@ -235,6 +247,54 @@
           "group_ids": "Import only devices in these iMatrix groups and their subgroups. Leave empty for all devices.",
           "scan_interval": "How often to ask the iMatrix cloud for new readings, in seconds.",
           "include_unmapped": "Also create entities for channels iMatrix has no unit or meaning for. They start disabled."
+        }
+      }
+    }
+  },
+  "services": {
+    "get_faults": {
+      "name": "Get fault codes",
+      "description": "Returns active and recently reported fault codes and the dashboard lamps of a vehicle, from the last 7 days.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "An iMatrix device."
+        }
+      }
+    },
+    "get_trips": {
+      "name": "Get trips",
+      "description": "Returns the trips of a vehicle, newest first. At most 31 days.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "An iMatrix device."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Start of the period. Defaults to 7 days ago (24 hours for history)."
+        },
+        "end": {
+          "name": "End",
+          "description": "End of the period. Defaults to now."
+        }
+      }
+    },
+    "get_history": {
+      "name": "Get hourly history",
+      "description": "Returns hourly mean, minimum, maximum and last values of an iMatrix sensor from the iMatrix cloud. At most 7 days.",
+      "fields": {
+        "entity_id": {
+          "name": "Sensor",
+          "description": "An iMatrix sensor entity."
+        },
+        "start": {
+          "name": "Start",
+          "description": "Start of the period. Defaults to 7 days ago (24 hours for history)."
+        },
+        "end": {
+          "name": "End",
+          "description": "End of the period. Defaults to now."
         }
       }
     }

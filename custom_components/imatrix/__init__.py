@@ -8,7 +8,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.typing import ConfigType
 from pyimatrix import (
     Account,
     IMatrixAuthError,
@@ -20,6 +22,9 @@ from pyimatrix import (
 from .const import CONF_BASE_URL, DOMAIN
 from .coordinator import IMatrixCoordinator
 from .helpers import create_api_key_client
+from .services import async_setup_services
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -38,6 +43,12 @@ class IMatrixData:
 
 
 type IMatrixConfigEntry = ConfigEntry[IMatrixData]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register actions. They live for the whole HA run, not per entry."""
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> bool:

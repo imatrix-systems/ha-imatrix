@@ -61,5 +61,16 @@
         }
       }
     }
+  },
+  "services": {
+    "get_faults": {
+      "service": "mdi:car-wrench"
+    },
+    "get_trips": {
+      "service": "mdi:map-marker-path"
+    },
+    "get_history": {
+      "service": "mdi:chart-line"
+    }
   }
 }

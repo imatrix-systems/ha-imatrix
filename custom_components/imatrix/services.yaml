@@ -1,0 +1,34 @@
+get_faults:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: imatrix
+get_trips:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: imatrix
+    start:
+      selector:
+        datetime:
+    end:
+      selector:
+        datetime:
+get_history:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: imatrix
+          domain: sensor
+    start:
+      selector:
+        datetime:
+    end:
+      selector:
+        datetime:
