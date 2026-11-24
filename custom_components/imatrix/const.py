@@ -12,6 +12,10 @@ CONF_GROUP_IDS: Final = "group_ids"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_INCLUDE_UNMAPPED: Final = "include_unmapped"
 CONF_PUSH: Final = "push"
+# Spec 822 FR-23, FR-28: floor plan sync (plan id, empty for off) and opt-in device list
+# sharing.
+CONF_FLOOR_PLAN_ID: Final = "floor_plan_id"
+CONF_SHARE_DEVICES: Final = "share_devices"
 
 DEFAULT_BASE_URL: Final = "https://api.imatrixsys.com"
 

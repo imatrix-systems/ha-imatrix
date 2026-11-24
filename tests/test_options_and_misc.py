@@ -1,10 +1,12 @@
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
+from pyimatrix import IMatrixConnectionError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.components.diagnostics import (
     get_diagnostics_for_config_entry,
@@ -50,6 +52,8 @@ async def test_options_flow(
         CONF_SCAN_INTERVAL: 120,
         CONF_INCLUDE_UNMAPPED: True,
         "push": False,
+        "floor_plan_id": "",
+        "share_devices": False,
     }
     coordinator = init_integration.runtime_data.coordinator
     assert coordinator.update_interval.total_seconds() == 120
@@ -128,3 +132,55 @@ async def test_diagnostics_redacted(
         assert secret not in text
     assert diag["coordinator"]["rate_limit_remaining"] == 118
     assert set(diag["devices"]) == {"device_0", "device_1", "device_2"}
+
+
+async def test_options_floor_plan_and_sharing(
+    hass: HomeAssistant, init_integration: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    """Spec 822 FR-23, FR-28: pick a plan and share; no plan turns sharing off."""
+    mock_client.get_floor_plans = AsyncMock(
+        return_value=[SimpleNamespace(id="p1", name="Cold store", revision=2)]
+    )
+    mock_client.get_floor_plan_desired = AsyncMock(
+        side_effect=IMatrixConnectionError("x")
+    )
+    mock_client.put_ha_devices = AsyncMock(return_value=0)
+    result = await hass.config_entries.options.async_init(init_integration.entry_id)
+    plans = {
+        o["value"]: o["label"]
+        for o in result["data_schema"].schema["floor_plan_id"].config["options"]
+    }
+    assert plans == {"": "Off", "p1": "Cold store"}
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_GROUP_IDS: [],
+            CONF_SCAN_INTERVAL: 60,
+            CONF_INCLUDE_UNMAPPED: False,
+            "push": False,
+            "floor_plan_id": "p1",
+            "share_devices": True,
+        },
+    )
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert init_integration.options["floor_plan_id"] == "p1"
+    assert init_integration.options["share_devices"] is True
+    mock_client.put_ha_devices.assert_awaited()
+
+    mock_client.get_floor_plans = AsyncMock(side_effect=IMatrixConnectionError("down"))
+    result = await hass.config_entries.options.async_init(init_integration.entry_id)
+    plans = result["data_schema"].schema["floor_plan_id"].config["options"]
+    assert [o["value"] for o in plans] == [""]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_GROUP_IDS: [],
+            CONF_SCAN_INTERVAL: 60,
+            CONF_INCLUDE_UNMAPPED: False,
+            "push": False,
+            "floor_plan_id": "",
+            "share_devices": True,
+        },
+    )
+    await hass.async_block_till_done()
+    assert init_integration.options["share_devices"] is False

@@ -49,10 +49,12 @@ from .const import (
     CONF_ADVANCED,
     CONF_AUTH_TYPE,
     CONF_BASE_URL,
+    CONF_FLOOR_PLAN_ID,
     CONF_GROUP_IDS,
     CONF_INCLUDE_UNMAPPED,
     CONF_PUSH,
     CONF_SCAN_INTERVAL,
+    CONF_SHARE_DEVICES,
     DEFAULT_BASE_URL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -294,15 +296,29 @@ class IMatrixOptionsFlow(OptionsFlowWithReload):
     ) -> ConfigFlowResult:
         """Show the options form."""
         if user_input is not None:
+            plan_id = user_input.get(CONF_FLOOR_PLAN_ID) or ""
             return self.async_create_entry(
                 data={
                     CONF_GROUP_IDS: [int(g) for g in user_input[CONF_GROUP_IDS]],
                     CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
                     CONF_INCLUDE_UNMAPPED: user_input[CONF_INCLUDE_UNMAPPED],
                     CONF_PUSH: user_input[CONF_PUSH],
+                    # Spec 822 FR-23, FR-28: sharing needs a plan; no plan turns sharing
+                    # off.
+                    CONF_FLOOR_PLAN_ID: plan_id,
+                    CONF_SHARE_DEVICES: bool(plan_id)
+                    and bool(user_input.get(CONF_SHARE_DEVICES)),
                 }
             )
         options = self.config_entry.options
+        # Spec 822 FR-23: the org's floor plans, when the key can read them (404 or 403
+        # means none).
+        plan_choices = [SelectOptionDict(value="", label="Off")]
+        try:
+            plans = await self.config_entry.runtime_data.client.get_floor_plans()
+            plan_choices += [SelectOptionDict(value=p.id, label=p.name) for p in plans]
+        except Exception:
+            plans = []
         paths = self.config_entry.runtime_data.coordinator.data.group_paths
         selected = [str(g) for g in options.get(CONF_GROUP_IDS, [])]
         # Keep selected groups visible even when no device is in them right now.
@@ -338,6 +354,12 @@ class IMatrixOptionsFlow(OptionsFlowWithReload):
                 vol.Required(
                     CONF_INCLUDE_UNMAPPED,
                     default=options.get(CONF_INCLUDE_UNMAPPED, False),
+                ): BooleanSelector(),
+                vol.Optional(
+                    CONF_FLOOR_PLAN_ID, default=options.get(CONF_FLOOR_PLAN_ID, "")
+                ): SelectSelector(SelectSelectorConfig(options=plan_choices)),
+                vol.Required(
+                    CONF_SHARE_DEVICES, default=options.get(CONF_SHARE_DEVICES, False)
                 ): BooleanSelector(),
             }
         )

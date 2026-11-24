@@ -1,0 +1,495 @@
+{
+  "policy": {
+    "instance_id": "00000000000000000000000000000000",
+    "building_scope": "primary",
+    "multi_building_mode": "primary_only",
+    "sublevel_mode": "merge_into_parent",
+    "non_addressable_mode": "merge",
+    "connector_mode": "home_level",
+    "nested_space_mode": "flatten_with_label",
+    "name_disambiguation": "suffix_floor_short",
+    "labels": {
+      "prefix": "fpm",
+      "emit_connects": true,
+      "emit_zones": true,
+      "emit_environment": true,
+      "emit_kind": true,
+      "emit_managed_marker": true,
+      "emit_adjacency": false
+    },
+    "ownership": "fpm_authoritative",
+    "delete_mode": "managed_only",
+    "dashboard": {
+      "enabled": true,
+      "card": "fpm_card",
+      "url_path": "floor-plan"
+    },
+    "climate_mapping": false
+  },
+  "floors": [
+    {
+      "fpm_id": "c13a8db6-6df9-5ccb-ab9e-5512f833c4c6",
+      "floor_id_predicted": "ground_floor",
+      "name": "Ground Floor",
+      "level": 0,
+      "aliases": [
+        "Downstairs",
+        "G"
+      ],
+      "icon": "mdi:home-floor-g"
+    },
+    {
+      "fpm_id": "3db662f8-16cb-577f-b8a7-446c41436c4e",
+      "floor_id_predicted": "upstairs",
+      "name": "Upstairs",
+      "level": 1,
+      "aliases": [
+        "First floor",
+        "1"
+      ],
+      "icon": "mdi:home-floor-1"
+    }
+  ],
+  "areas": [
+    {
+      "fpm_ids": [
+        "055402a2-c369-5995-a48e-5a2af62b8bfe"
+      ],
+      "floor": "ground_floor",
+      "aliases": [],
+      "labels": [
+        "fpm:managed",
+        "fpm:interior",
+        "fpm:entry"
+      ],
+      "name": "Hall",
+      "area_id_predicted": "hall"
+    },
+    {
+      "fpm_ids": [
+        "389c70b0-fbb0-5e06-be59-1337a59306fe"
+      ],
+      "floor": "upstairs",
+      "aliases": [],
+      "labels": [
+        "fpm:managed",
+        "fpm:interior",
+        "fpm:zone:upstairs-hvac"
+      ],
+      "name": "Study",
+      "area_id_predicted": "study"
+    },
+    {
+      "fpm_ids": [
+        "59e8d9ee-bfaa-527a-b0a1-7752ee973c6f"
+      ],
+      "floor": "upstairs",
+      "aliases": [],
+      "labels": [
+        "fpm:managed",
+        "fpm:interior",
+        "fpm:zone:upstairs-hvac",
+        "fpm:landing"
+      ],
+      "name": "Landing",
+      "area_id_predicted": "landing"
+    },
+    {
+      "fpm_ids": [
+        "5ff59938-a564-5e63-88ab-3e431a7dc674"
+      ],
+      "floor": "upstairs",
+      "aliases": [],
+      "labels": [
+        "fpm:managed",
+        "fpm:interior",
+        "fpm:zone:upstairs-hvac"
+      ],
+      "name": "Bedroom",
+      "area_id_predicted": "bedroom"
+    },
+    {
+      "fpm_ids": [
+        "7d103fbd-8e56-59f8-aa6a-d48a858af193"
+      ],
+      "floor": "upstairs",
+      "aliases": [],
+      "labels": [
+        "fpm:managed",
+        "fpm:interior",
+        "fpm:zone:upstairs-hvac"
+      ],
+      "name": "Bathroom",
+      "area_id_predicted": "bathroom"
+    },
+    {
+      "fpm_ids": [
+        "9a64a07d-dab7-5670-92cf-a3a5eac36283"
+      ],
+      "floor": "ground_floor",
+      "aliases": [],
+      "labels": [
+        "fpm:managed",
+        "fpm:interior",
+        "fpm:zone:upstairs-hvac"
+      ],
+      "name": "Living Room",
+      "area_id_predicted": "living_room"
+    },
+    {
+      "fpm_ids": [
+        "ae151730-c8ea-5484-a82a-b47397c550bd"
+      ],
+      "floor": "ground_floor",
+      "aliases": [],
+      "labels": [
+        "fpm:managed",
+        "fpm:interior"
+      ],
+      "name": "Kitchen",
+      "area_id_predicted": "kitchen"
+    },
+    {
+      "fpm_ids": [
+        "1ae9aaf9-b7d8-56a1-a9e6-c2bb5942ec58",
+        "01662270-775b-513b-8c69-bee90a8107d0",
+        "c4a0bed8-d1af-5d26-bfc7-4b07a15542e2"
+      ],
+      "floor": "ground_floor",
+      "aliases": [
+        "Stairs (lower)",
+        "Stairs (upper)"
+      ],
+      "labels": [
+        "fpm:managed",
+        "fpm:interior",
+        "fpm:stair",
+        "fpm:connects:ground_floor",
+        "fpm:connects:upstairs"
+      ],
+      "name": "Main Stairs",
+      "area_id_predicted": "main_stairs"
+    }
+  ],
+  "labels": [
+    {
+      "label_id": "fpm:zone:upstairs-hvac",
+      "name": "Zone: Upstairs HVAC",
+      "color": "#c2410c",
+      "description": "FPM zone (hvac)"
+    },
+    {
+      "label_id": "fpm:managed",
+      "name": "Managed by FPM"
+    },
+    {
+      "label_id": "fpm:stair",
+      "name": "Stairs"
+    },
+    {
+      "label_id": "fpm:connects:ground_floor",
+      "name": "Connects to Ground Floor"
+    },
+    {
+      "label_id": "fpm:connects:upstairs",
+      "name": "Connects to Upstairs"
+    },
+    {
+      "label_id": "fpm:interior",
+      "name": "Interior"
+    },
+    {
+      "label_id": "fpm:entry",
+      "name": "Entry"
+    },
+    {
+      "label_id": "fpm:landing",
+      "name": "Landing"
+    }
+  ],
+  "device_assignments": [
+    {
+      "device_fpm_id": "2087eb8a-38b0-5d8b-bddd-6bd98c9ab71e",
+      "device": "Stair motion (bottom)",
+      "match_by": [
+        "zigbee_ieee=00:12:4b:00:aa:bb:cc:01"
+      ],
+      "area": "Main Stairs",
+      "area_id_predicted": "main_stairs",
+      "reason": "connector host → explicit stop (Stairs (lower))"
+    },
+    {
+      "device_fpm_id": "cb1ead64-1792-5511-80a0-c553d8a26ca5",
+      "device": "Stair motion (top)",
+      "match_by": [
+        "zigbee_ieee=00:12:4b:00:aa:bb:cc:02"
+      ],
+      "area": "Main Stairs",
+      "area_id_predicted": "main_stairs",
+      "reason": "connector host → explicit stop (Stairs (upper))"
+    },
+    {
+      "device_fpm_id": "15d49a1b-e057-505a-9bd8-3d2d1efb3056",
+      "device": "Stair lights",
+      "match_by": [
+        "ha_entity_id=light.stair_lights"
+      ],
+      "area": "Main Stairs",
+      "area_id_predicted": "main_stairs",
+      "reason": "connector host → nearest stop by z (Stairs (lower))"
+    },
+    {
+      "device_fpm_id": "c6368c67-e8d9-56aa-8668-abaccc3fd6ba",
+      "device": "Living presence",
+      "match_by": [
+        "mac=a4:c1:38:00:00:11"
+      ],
+      "area": "Living Room",
+      "area_id_predicted": "living_room",
+      "reason": "space host → Living Room"
+    },
+    {
+      "device_fpm_id": "b1ea69ba-daeb-5fd5-9c19-7d43c85ccf8d",
+      "device": "Kitchen pendants",
+      "match_by": [
+        "ha_entity_id=light.kitchen_pendants"
+      ],
+      "area": "Kitchen",
+      "area_id_predicted": "kitchen",
+      "reason": "space host → Kitchen"
+    },
+    {
+      "device_fpm_id": "288afed7-5231-52de-841c-834dd16f7a67",
+      "device": "Front door contact",
+      "match_by": [
+        "zigbee_ieee=00:12:4b:00:aa:bb:cc:03"
+      ],
+      "area": "Hall",
+      "area_id_predicted": "hall",
+      "reason": "opening host → Hall"
+    },
+    {
+      "device_fpm_id": "020ef7e3-e68d-5b0f-9615-0e75d6a06e8f",
+      "device": "Bedroom thermostat",
+      "match_by": [
+        "matter_node=0x1A2B"
+      ],
+      "area": "Bedroom",
+      "area_id_predicted": "bedroom",
+      "reason": "space host → Bedroom"
+    }
+  ],
+  "ws_plan": [
+    {
+      "type": "config/label_registry/create",
+      "name": "Zone: Upstairs HVAC",
+      "color": "#c2410c",
+      "description": "FPM zone (hvac)",
+      "_label_key": "fpm:zone:upstairs-hvac"
+    },
+    {
+      "type": "config/label_registry/create",
+      "name": "Managed by FPM",
+      "_label_key": "fpm:managed"
+    },
+    {
+      "type": "config/label_registry/create",
+      "name": "Stairs",
+      "_label_key": "fpm:stair"
+    },
+    {
+      "type": "config/label_registry/create",
+      "name": "Connects to Ground Floor",
+      "_label_key": "fpm:connects:ground_floor"
+    },
+    {
+      "type": "config/label_registry/create",
+      "name": "Connects to Upstairs",
+      "_label_key": "fpm:connects:upstairs"
+    },
+    {
+      "type": "config/label_registry/create",
+      "name": "Interior",
+      "_label_key": "fpm:interior"
+    },
+    {
+      "type": "config/label_registry/create",
+      "name": "Entry",
+      "_label_key": "fpm:entry"
+    },
+    {
+      "type": "config/label_registry/create",
+      "name": "Landing",
+      "_label_key": "fpm:landing"
+    },
+    {
+      "type": "config/floor_registry/create",
+      "name": "Ground Floor",
+      "level": 0,
+      "icon": "mdi:home-floor-g",
+      "aliases": [
+        "Downstairs",
+        "G"
+      ]
+    },
+    {
+      "type": "config/floor_registry/create",
+      "name": "Upstairs",
+      "level": 1,
+      "icon": "mdi:home-floor-1",
+      "aliases": [
+        "First floor",
+        "1"
+      ]
+    },
+    {
+      "type": "config/area_registry/create",
+      "name": "Hall",
+      "floor_id": "<floor:ground_floor>",
+      "aliases": [],
+      "labels": [
+        "<label:fpm:managed>",
+        "<label:fpm:interior>",
+        "<label:fpm:entry>"
+      ]
+    },
+    {
+      "type": "config/area_registry/create",
+      "name": "Study",
+      "floor_id": "<floor:upstairs>",
+      "aliases": [],
+      "labels": [
+        "<label:fpm:managed>",
+        "<label:fpm:interior>",
+        "<label:fpm:zone:upstairs-hvac>"
+      ]
+    },
+    {
+      "type": "config/area_registry/create",
+      "name": "Landing",
+      "floor_id": "<floor:upstairs>",
+      "aliases": [],
+      "labels": [
+        "<label:fpm:managed>",
+        "<label:fpm:interior>",
+        "<label:fpm:zone:upstairs-hvac>",
+        "<label:fpm:landing>"
+      ]
+    },
+    {
+      "type": "config/area_registry/create",
+      "name": "Bedroom",
+      "floor_id": "<floor:upstairs>",
+      "aliases": [],
+      "labels": [
+        "<label:fpm:managed>",
+        "<label:fpm:interior>",
+        "<label:fpm:zone:upstairs-hvac>"
+      ]
+    },
+    {
+      "type": "config/area_registry/create",
+      "name": "Bathroom",
+      "floor_id": "<floor:upstairs>",
+      "aliases": [],
+      "labels": [
+        "<label:fpm:managed>",
+        "<label:fpm:interior>",
+        "<label:fpm:zone:upstairs-hvac>"
+      ]
+    },
+    {
+      "type": "config/area_registry/create",
+      "name": "Living Room",
+      "floor_id": "<floor:ground_floor>",
+      "aliases": [],
+      "labels": [
+        "<label:fpm:managed>",
+        "<label:fpm:interior>",
+        "<label:fpm:zone:upstairs-hvac>"
+      ]
+    },
+    {
+      "type": "config/area_registry/create",
+      "name": "Kitchen",
+      "floor_id": "<floor:ground_floor>",
+      "aliases": [],
+      "labels": [
+        "<label:fpm:managed>",
+        "<label:fpm:interior>"
+      ]
+    },
+    {
+      "type": "config/area_registry/create",
+      "name": "Main Stairs",
+      "floor_id": "<floor:ground_floor>",
+      "aliases": [
+        "Stairs (lower)",
+        "Stairs (upper)"
+      ],
+      "labels": [
+        "<label:fpm:managed>",
+        "<label:fpm:interior>",
+        "<label:fpm:stair>",
+        "<label:fpm:connects:ground_floor>",
+        "<label:fpm:connects:upstairs>"
+      ]
+    },
+    {
+      "type": "config/device_registry/update",
+      "device_id": "<match:zigbee_ieee=00:12:4b:00:aa:bb:cc:01>",
+      "area_id": "<area:main_stairs>"
+    },
+    {
+      "type": "config/device_registry/update",
+      "device_id": "<match:zigbee_ieee=00:12:4b:00:aa:bb:cc:02>",
+      "area_id": "<area:main_stairs>"
+    },
+    {
+      "type": "config/device_registry/update",
+      "device_id": "<match:ha_entity_id=light.stair_lights>",
+      "area_id": "<area:main_stairs>"
+    },
+    {
+      "type": "config/device_registry/update",
+      "device_id": "<match:mac=a4:c1:38:00:00:11>",
+      "area_id": "<area:living_room>"
+    },
+    {
+      "type": "config/device_registry/update",
+      "device_id": "<match:ha_entity_id=light.kitchen_pendants>",
+      "area_id": "<area:kitchen>"
+    },
+    {
+      "type": "config/device_registry/update",
+      "device_id": "<match:zigbee_ieee=00:12:4b:00:aa:bb:cc:03>",
+      "area_id": "<area:hall>"
+    },
+    {
+      "type": "config/device_registry/update",
+      "device_id": "<match:matter_node=0x1A2B>",
+      "area_id": "<area:bedroom>"
+    }
+  ],
+  "loss_report": {
+    "dropped": [
+      {
+        "object_id": "1ae9aaf9-b7d8-56a1-a9e6-c2bb5942ec58",
+        "what": "Main Stairs: flight geometry, voids, stop elevations",
+        "reason": "HA has no geometry or vertical-connector concept"
+      },
+      {
+        "what": "All space/opening/void geometry and adjacency",
+        "reason": "export separately as floor plan card config (§12.7)"
+      }
+    ],
+    "approximated": [
+      {
+        "object_id": "9a64a07d-dab7-5670-92cf-a3a5eac36283",
+        "what": "Living Room also open on Upstairs",
+        "reason": "areas belong to one floor; kept on primary floor (zone labels preserve HVAC grouping)"
+      }
+    ],
+    "notes": []
+  }
+}
