@@ -200,7 +200,11 @@ async def _async_withdraw_shared_devices(
             manager = FloorPlanManager(hass, entry, client, None, False)
             await manager.async_withdraw_devices()
     except Exception as err:
-        _LOGGER.debug("Could not withdraw the shared device list: %s", err)
+        _LOGGER.warning(
+            "Could not withdraw the shared device list; iMatrix deletes it after 30 "
+            "days without an update: %s",
+            err,
+        )
     await store.async_remove()
 
 

@@ -31,6 +31,8 @@ OAUTH2_AUTHORIZE_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/authorize"
 OAUTH2_TOKEN_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/token"
 OAUTH2_REVOKE_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/revoke"
 OAUTH2_SCOPE: Final = "imatrix.read"
+# Spec 822 FR-30: asked for only when the user turns device sharing on.
+OAUTH2_SCOPE_HA_DEVICES: Final = "imatrix.ha_devices"
 WEB_APP_URL: Final = "https://cloud.imatrixsys.com"
 
 DEFAULT_SCAN_INTERVAL: Final = 60

@@ -62,6 +62,8 @@ from .const import (
     MIN_SCAN_INTERVAL,
     OAUTH2_CLIENT_ID,
     OAUTH2_CLIENT_SECRET,
+    OAUTH2_SCOPE,
+    OAUTH2_SCOPE_HA_DEVICES,
     REQUIRED_PERMISSIONS,
 )
 from .helpers import StaticTokenAuth, create_api_key_client
@@ -110,6 +112,15 @@ class IMatrixConfigFlow(
     def logger(self) -> logging.Logger:
         """Logger for the OAuth2 helper."""
         return _LOGGER
+
+    @property
+    def extra_authorize_data(self) -> dict[str, Any]:
+        """Ask for the sharing scope on reauth when sharing is on (spec 822 FR-30)."""
+        if self.source == SOURCE_REAUTH and self._get_reauth_entry().options.get(
+            CONF_SHARE_DEVICES
+        ):
+            return {"scope": f"{OAUTH2_SCOPE} {OAUTH2_SCOPE_HA_DEVICES}"}
+        return {}
 
     @staticmethod
     @callback

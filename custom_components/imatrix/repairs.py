@@ -17,6 +17,7 @@ class FloorPlanSyncFlow(RepairsFlow):
     def __init__(self, entry_id: str) -> None:
         """Remember which config entry the plan belongs to."""
         self.entry_id = entry_id
+        self._shown: Any = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -30,11 +31,14 @@ class FloorPlanSyncFlow(RepairsFlow):
         """List the actions; apply them when the user submits."""
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         manager = getattr(getattr(entry, "runtime_data", None), "floor_plan", None)
+        if user_input is not None and manager is not None and self._shown is not None:
+            # Spec 822 FR-24: run exactly the list the user saw, never a newer one.
+            if not await manager.async_apply(self._shown):
+                return self.async_abort(reason="floor_plan_changed")
+            return self.async_create_entry(data={})
         if manager is None or manager.pending is None:
             return self.async_abort(reason="floor_plan_gone")
-        if user_input is not None:
-            await manager.async_apply()
-            return self.async_create_entry(data={})
+        self._shown = manager.pending
         lines = [a.describe() for a in manager.pending.actions[:30]]
         return self.async_show_form(
             step_id="confirm",

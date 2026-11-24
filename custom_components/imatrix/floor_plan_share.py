@@ -28,6 +28,13 @@ ALLOWED_FIELDS = frozenset(
 )
 
 
+MAX_AREA_ID = 255
+
+
+def _cut(value: str | None, limit: int) -> str | None:
+    return value[:limit] if value else value
+
+
 def build_device_list(hass: HomeAssistant) -> list[dict[str, Any]]:
     """Return the device list the cloud accepts (FR-28), at most 5000 devices."""
     dev_reg = dr.async_get(hass)
@@ -61,9 +68,12 @@ def build_device_list(hass: HomeAssistant) -> list[dict[str, Any]]:
                 "name": (
                     device.name_by_user or device.name or device.model or device.id
                 )[:255],
-                "manufacturer": device.manufacturer,
-                "model": device.model,
-                "haAreaId": device.area_id,
+                "manufacturer": _cut(device.manufacturer, 255),
+                "model": _cut(device.model, 255),
+                # An id cut short would point nowhere, so a too-long one is left out.
+                "haAreaId": device.area_id
+                if device.area_id and len(device.area_id) <= MAX_AREA_ID
+                else None,
                 "integrationDomain": config_entry.domain if config_entry else "unknown",
                 "categories": categories[:50],
             }

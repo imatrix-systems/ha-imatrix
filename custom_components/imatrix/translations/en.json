@@ -418,9 +418,14 @@
           }
         },
         "abort": {
-          "floor_plan_gone": "The floor plan is no longer selected or has no pending changes."
+          "floor_plan_gone": "The floor plan is no longer selected or has no pending changes.",
+          "floor_plan_changed": "The floor plan changed while this was open, or a change could not be made. Open the repair again to see the current list."
         }
       }
+    },
+    "share_devices_key": {
+      "title": "Device sharing is not allowed for {title}",
+      "description": "Home Assistant could not share its device list because the API key does not allow it. Create a key with the \"Home Assistant (read-only, with device list sharing)\" access in iMatrix, then reconfigure this entry with it, or turn device sharing off in the options."
     }
   }
 }

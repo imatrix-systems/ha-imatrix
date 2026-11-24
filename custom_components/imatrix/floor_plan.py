@@ -11,6 +11,7 @@ cloud.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -23,14 +24,16 @@ from homeassistant.helpers import floor_registry as fr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers import label_registry as lr
 from homeassistant.helpers.storage import Store
+from pyimatrix import IMatrixPermissionError
 
-from .const import DOMAIN
+from .const import AUTH_TYPE_OAUTH2, CONF_AUTH_TYPE, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 STORE_VERSION = 1
 ISSUE_PREFIX = "floor_plan_sync"
 MANAGED_LABEL = "fpm:managed"
+MANAGED_LABEL_NAME = "Managed by FPM"
 
 
 def _norm(name: str) -> str:
@@ -69,6 +72,10 @@ class FloorPlanSync:
     revision: int
     actions: list[Action]
     unmatched_devices: list[str]
+    # Existing HA objects linked by name this run (F2): recorded on apply.
+    links: dict[str, dict[str, str]] = field(
+        default_factory=lambda: {"floors": {}, "areas": {}, "labels": {}}
+    )
 
 
 class FloorPlanStore:
@@ -83,6 +90,8 @@ class FloorPlanStore:
             "floors": {},
             "areas": {},
             "labels": {},
+            # Floors the user already had, linked by name: used, never edited.
+            "user_floors": [],
             "revision": None,
         }
 
@@ -153,9 +162,16 @@ def _device_for(hass: HomeAssistant, match_by: list[str]) -> Any:
 
 
 def _link_labels(
-    hass: HomeAssistant, desired: Any, store: FloorPlanStore, actions: list[Action]
+    hass: HomeAssistant,
+    desired: Any,
+    store: FloorPlanStore,
+    actions: list[Action],
+    links: dict[str, str],
 ) -> dict[str, str]:
-    """Link desired labels by stored id, else by name; queue creates for the rest."""
+    """Link desired labels by stored id, else by name; queue creates for the rest.
+
+    A label found by name is used as it is and never edited.
+    """
     label_reg = lr.async_get(hass)
     ids: dict[str, str] = {}
     for label in desired.labels:
@@ -166,6 +182,8 @@ def _link_labels(
         )
         if existing:
             ids[key] = existing.label_id
+            if lid != existing.label_id:
+                links[key] = existing.label_id
             continue
         data = {
             "name": label["name"],
@@ -177,17 +195,28 @@ def _link_labels(
 
 
 def _link_floors(
-    hass: HomeAssistant, desired: Any, store: FloorPlanStore, actions: list[Action]
+    hass: HomeAssistant,
+    desired: Any,
+    store: FloorPlanStore,
+    actions: list[Action],
+    links: dict[str, str],
 ) -> dict[str, str]:
-    """Link desired floors by stored id, else by name; queue creates and updates."""
+    """Link desired floors by stored id, else by name; queue creates and updates.
+
+    Only a floor this plan created is updated. A floor found by name belongs to the
+    user (HA floors have no labels to mark them managed), so it is used, never edited.
+    """
     floor_reg = fr.async_get(hass)
     ids: dict[str, str] = {}
     for floor in desired.floors:
         key = floor["fpm_id"]
         fid = store.data["floors"].get(key)
-        existing = (fid and floor_reg.async_get_floor(fid)) or (
-            floor_reg.async_get_floor_by_name(floor["name"])
+        owned = (
+            fid
+            and fid not in store.data["user_floors"]
+            and floor_reg.async_get_floor(fid)
         )
+        existing = owned or floor_reg.async_get_floor_by_name(floor["name"])
         data: dict[str, Any] = {
             "name": floor["name"],
             "level": floor.get("level"),
@@ -198,6 +227,9 @@ def _link_floors(
             actions.append(Action("create", "floor", key, data))
             continue
         ids[key] = existing.floor_id
+        if not owned:
+            links[key] = existing.floor_id
+            continue
         changed = (
             existing.name != data["name"]
             or existing.level != data["level"]
@@ -208,27 +240,60 @@ def _link_floors(
     return ids
 
 
+def _managed_label_id(hass: HomeAssistant, store: FloorPlanStore) -> str | None:
+    """Return the HA id of the plan's managed label, if it exists."""
+    label_reg = lr.async_get(hass)
+    lid = store.data["labels"].get(MANAGED_LABEL)
+    label = (lid and label_reg.async_get_label(lid)) or (
+        label_reg.async_get_label_by_name(MANAGED_LABEL_NAME)
+    )
+    return label.label_id if label else None
+
+
+def _is_managed(area: Any, managed: str | None, linked: set[str]) -> bool:
+    return area.id in linked or bool(managed and managed in area.labels)
+
+
 def _unmanaged_names(hass: HomeAssistant, store: FloorPlanStore) -> set[str]:
     """Return the names of areas this plan does not manage (FR-25)."""
     area_reg = ar.async_get(hass)
-    managed = lr.async_get(hass).async_get_label_by_name("Managed by FPM")
-    linked = {a for a in store.data["areas"].values() if area_reg.async_get_area(a)}
+    managed = _managed_label_id(hass, store)
+    linked = set(store.data["areas"].values())
     return {
         _norm(a.name)
         for a in area_reg.async_list_areas()
-        if a.id not in linked and not (managed and managed.label_id in a.labels)
+        if not _is_managed(a, managed, linked)
     }
 
 
-def _find_area(hass: HomeAssistant, area: dict[str, Any], store: FloorPlanStore) -> Any:
-    """Return the HA area for a desired area: stored id, else a managed area by name."""
+def _find_area(
+    hass: HomeAssistant, area: dict[str, Any], store: FloorPlanStore, used: set[str]
+) -> Any:
+    """Return the HA area for a desired area (FR-23).
+
+    The stored id first, else a managed area with the desired name or, when it was
+    disambiguated (FR-25), with the desired name as an alias.
+    """
     area_reg = ar.async_get(hass)
     aid = store.data["areas"].get(area_key(area))
     if aid and (existing := area_reg.async_get_area(aid)):
         return existing
-    managed = lr.async_get(hass).async_get_label_by_name("Managed by FPM")
-    found = area_reg.async_get_area_by_name(area["name"])
-    return found if found and managed and managed.label_id in found.labels else None
+    managed = _managed_label_id(hass, store)
+    if managed is None:
+        return None
+    want = _norm(area["name"])
+    candidates = [
+        a
+        for a in area_reg.async_list_areas()
+        if managed in a.labels and a.id not in used
+    ]
+    for a in candidates:
+        if _norm(a.name) == want:
+            return a
+    for a in candidates:
+        if want in {_norm(x) for x in a.aliases}:
+            return a
+    return None
 
 
 def _link_areas(
@@ -236,26 +301,36 @@ def _link_areas(
     desired: Any,
     store: FloorPlanStore,
     actions: list[Action],
-    ids: tuple[dict[str, str], dict[str, str]],
+    ids: tuple[dict[str, str], dict[str, str], dict[str, str]],
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Link desired areas; queue creates (with free names) and updates."""
-    label_ids, floor_ids = ids
+    """Link desired areas; queue creates (with free names) and updates.
+
+    Updates only add: the plan's aliases and labels are merged into what the area
+    already has, and an area keeps its floor when the plan names none.
+    """
+    label_ids, floor_ids, links = ids
     short = {
         f["floor_id_predicted"]: (f.get("aliases") or [None])[-1]
         for f in desired.floors
     }
     fpm_of_floor = {f["floor_id_predicted"]: f["fpm_id"] for f in desired.floors}
     taken = _unmanaged_names(hass, store)
+    used: set[str] = set()
     area_ids: dict[str, str] = {}
     names: dict[str, str] = {}
     for area in desired.areas:
         key = area_key(area)
-        existing = _find_area(hass, area, store)
-        name = (
-            area["name"]
-            if existing
-            else _unique_name(area["name"], short.get(area.get("floor") or ""), taken)
-        )
+        existing = _find_area(hass, area, store, used)
+        floor_short = short.get(area.get("floor") or "")
+        if existing is not None:
+            used.add(existing.id)
+            # Its own name is never a clash with itself.
+            name = _unique_name(
+                area["name"], floor_short, taken - {_norm(existing.name)}
+            )
+        else:
+            name = _unique_name(area["name"], floor_short, taken)
+        taken.add(_norm(name))
         renamed = {area["name"]} if name != area["name"] else set()
         data: dict[str, Any] = {
             "name": name,
@@ -264,18 +339,19 @@ def _link_areas(
             "labels": list(area.get("labels") or ()),
         }
         names[key] = name
-        if not existing:
-            taken.add(_norm(name))
+        if existing is None:
             actions.append(Action("create", "area", key, data))
             continue
         area_ids[key] = existing.id
+        if store.data["areas"].get(key) != existing.id:
+            links[key] = existing.id
         want_floor = floor_ids.get(data["floor_fpm"] or "")
         want_labels = {label_ids.get(lab) for lab in data["labels"]}
         changed = (
             existing.name != name
-            or set(existing.aliases) != data["aliases"]
+            or not data["aliases"] <= set(existing.aliases)
             or (want_floor is not None and existing.floor_id != want_floor)
-            or (None not in want_labels and set(existing.labels) != want_labels)
+            or (None not in want_labels and not want_labels <= set(existing.labels))
         )
         if changed:
             actions.append(Action("update", "area", key, data, existing.id))
@@ -291,9 +367,12 @@ def build_sync(
     leave the plan stay in Home Assistant for the user to remove.
     """
     actions: list[Action] = []
-    label_ids = _link_labels(hass, desired, store, actions)
-    floor_ids = _link_floors(hass, desired, store, actions)
-    area_ids, names = _link_areas(hass, desired, store, actions, (label_ids, floor_ids))
+    links: dict[str, dict[str, str]] = {"floors": {}, "areas": {}, "labels": {}}
+    label_ids = _link_labels(hass, desired, store, actions, links["labels"])
+    floor_ids = _link_floors(hass, desired, store, actions, links["floors"])
+    area_ids, names = _link_areas(
+        hass, desired, store, actions, (label_ids, floor_ids, links["areas"])
+    )
     unmatched: list[str] = []
     area_by_name = {a["name"]: area_key(a) for a in desired.areas}
     for assignment in desired.device_assignments:
@@ -312,7 +391,69 @@ def build_sync(
                 "area_name": names.get(key),
             }
             actions.append(Action("assign", "device", device.id, data))
-    return FloorPlanSync(desired.revision, actions, unmatched)
+    return FloorPlanSync(desired.revision, actions, unmatched, links)
+
+
+def _run_floor(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> None:
+    floor_reg = fr.async_get(hass)
+    data = action.data
+    kwargs = {
+        "aliases": data["aliases"],
+        "icon": data.get("icon"),
+        "level": data.get("level"),
+    }
+    if action.kind == "create":
+        floor = floor_reg.async_create(data["name"], **kwargs)
+    else:
+        floor = floor_reg.async_update(
+            str(action.existing_id), name=data["name"], **kwargs
+        )
+    store.data["floors"][action.key] = floor.floor_id
+
+
+def _run_area(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> None:
+    area_reg = ar.async_get(hass)
+    data = action.data
+    floor_id = store.data["floors"].get(data.get("floor_fpm") or "")
+    labels = {
+        store.data["labels"][lab]
+        for lab in data["labels"]
+        if lab in store.data["labels"]
+    }
+    if action.kind == "create":
+        area = area_reg.async_create(
+            data["name"], aliases=data["aliases"], floor_id=floor_id, labels=labels
+        )
+    else:
+        current = area_reg.async_get_area(str(action.existing_id))
+        if current is None:
+            raise ValueError(f"area {data['name']} was removed")
+        area = area_reg.async_update(
+            current.id,
+            name=data["name"],
+            aliases=set(current.aliases) | data["aliases"],
+            floor_id=floor_id or current.floor_id,
+            labels=set(current.labels) | labels,
+        )
+    store.data["areas"][action.key] = area.id
+
+
+def _run_action(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> None:
+    data = action.data
+    if action.target == "label":
+        entry = lr.async_get(hass).async_create(
+            data["name"], color=data.get("color"), description=data.get("description")
+        )
+        store.data["labels"][action.key] = entry.label_id
+    elif action.target == "floor":
+        _run_floor(hass, action, store)
+    elif action.target == "area":
+        _run_area(hass, action, store)
+    elif action.target == "device":
+        area_id = store.data["areas"].get(data["area_key"])
+        if not area_id:
+            raise ValueError(f"no area for {data.get('device_name')}")
+        dr.async_get(hass).async_update_device(action.key, area_id=area_id)
 
 
 async def async_execute(
@@ -323,61 +464,14 @@ async def async_execute(
     A failure stops the run; what already ran is saved, so the next sync resumes from
     there.
     """
-    floor_reg = fr.async_get(hass)
-    area_reg = ar.async_get(hass)
-    label_reg = lr.async_get(hass)
-    dev_reg = dr.async_get(hass)
+    for kind, linked in sync.links.items():
+        store.data[kind].update(linked)
+    user_floors = set(store.data["user_floors"]) | set(sync.links["floors"].values())
+    store.data["user_floors"] = sorted(user_floors)
     done = 0
     try:
         for action in sync.actions:
-            data = action.data
-            if action.target == "label":
-                entry = label_reg.async_create(
-                    data["name"],
-                    color=data.get("color"),
-                    description=data.get("description"),
-                )
-                store.data["labels"][action.key] = entry.label_id
-            elif action.target == "floor":
-                kwargs = {
-                    "aliases": data["aliases"],
-                    "icon": data.get("icon"),
-                    "level": data.get("level"),
-                }
-                if action.kind == "create":
-                    floor = floor_reg.async_create(data["name"], **kwargs)
-                else:
-                    floor = floor_reg.async_update(
-                        str(action.existing_id), name=data["name"], **kwargs
-                    )
-                store.data["floors"][action.key] = floor.floor_id
-            elif action.target == "area":
-                floor_id = store.data["floors"].get(data.get("floor_fpm") or "")
-                labels = {
-                    store.data["labels"][lab]
-                    for lab in data["labels"]
-                    if lab in store.data["labels"]
-                }
-                if action.kind == "create":
-                    area = area_reg.async_create(
-                        data["name"],
-                        aliases=data["aliases"],
-                        floor_id=floor_id,
-                        labels=labels,
-                    )
-                else:
-                    area = area_reg.async_update(
-                        str(action.existing_id),
-                        name=data["name"],
-                        aliases=data["aliases"],
-                        floor_id=floor_id,
-                        labels=labels,
-                    )
-                store.data["areas"][action.key] = area.id
-            elif action.target == "device":
-                area_id = store.data["areas"].get(data["area_key"])
-                if area_id:
-                    dev_reg.async_update_device(action.key, area_id=area_id)
+            _run_action(hass, action, store)
             done += 1
     finally:
         if done == len(sync.actions):
@@ -449,6 +543,13 @@ class FloorPlanManager:
         self.instance_id: str | None = None
         self._unsubs: list[Any] = []
         self._share_timer: Any = None
+        self._stopped = False
+        # One lock per entry, shared by every manager it ever has, so an upload still
+        # in flight finishes before a later withdrawal starts (FR-29).
+        locks = hass.data.setdefault(f"{DOMAIN}_share_locks", {})
+        self._share_lock: asyncio.Lock = locks.setdefault(
+            entry.entry_id, asyncio.Lock()
+        )
 
     async def async_start(self) -> None:
         """Load the map, run a first check and schedule the next ones."""
@@ -484,7 +585,8 @@ class FloorPlanManager:
             await self.async_withdraw_devices()
 
     def async_stop(self) -> None:
-        """Cancel listeners and timers."""
+        """Cancel listeners and timers; later uploads from this manager do nothing."""
+        self._stopped = True
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
@@ -518,14 +620,23 @@ class FloorPlanManager:
             self.hass, self.entry.entry_id, self.entry.title, self.pending
         )
 
-    async def async_apply(self) -> int:
-        """Run the pending actions (called from the repair flow), then check again."""
-        if self.pending is None:
-            return 0
-        done = await async_execute(self.hass, self.pending, self.store)
+    async def async_apply(self, sync: FloorPlanSync | None = None) -> bool:
+        """Run the actions the user confirmed, then check again (FR-24).
+
+        `sync` is the list the repair showed; if a newer check replaced it, nothing
+        runs and the repair shows the new list. Returns False when nothing ran or a
+        step failed; what ran is kept and the next check starts from there.
+        """
+        if sync is None or sync is not self.pending:
+            return False
         self.pending = None
+        try:
+            done = await async_execute(self.hass, sync, self.store)
+        except Exception:
+            _LOGGER.exception("Applying the floor plan stopped part way")
+            done = -1
         await self.async_check()
-        return done
+        return done == len(sync.actions)
 
     async def _async_registry_changed(self, _event: Any) -> None:
         from homeassistant.helpers.event import async_call_later  # noqa: PLC0415
@@ -549,26 +660,57 @@ class FloorPlanManager:
 
         if not self.instance_id:
             return
-        try:
-            await self.client.put_ha_devices(
-                self.instance_id, build_device_list(self.hass)
-            )
-        except Exception as err:
-            _LOGGER.warning("Could not share the device list with iMatrix: %s", err)
-            return
-        self.store.data["shared"] = True
-        await self.store.async_save()
+        async with self._share_lock:
+            if self._stopped:
+                return
+            try:
+                await self.client.put_ha_devices(
+                    self.instance_id, build_device_list(self.hass)
+                )
+            except IMatrixPermissionError:
+                self._async_permission_refused()
+                return
+            except Exception as err:
+                _LOGGER.warning("Could not share the device list with iMatrix: %s", err)
+                return
+            self.store.data["shared"] = True
+            await self.store.async_save()
 
-    async def async_withdraw_devices(self) -> None:
+    def _async_permission_refused(self) -> None:
+        """FR-30: the credential lacks device sharing.
+
+        A sign-in is asked to sign in again with the sharing scope. An API key needs
+        the sharing preset, which the repair explains.
+        """
+        if self.entry.data.get(CONF_AUTH_TYPE) == AUTH_TYPE_OAUTH2:
+            self.entry.async_start_reauth(self.hass)
+            return
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            f"share_devices_key_{self.entry.entry_id}",
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="share_devices_key",
+            translation_placeholders={"title": self.entry.title},
+        )
+
+    async def async_withdraw_devices(self) -> bool:
         """Delete the shared list in the cloud (FR-29)."""
         if not self.instance_id:
             from homeassistant.helpers import instance_id  # noqa: PLC0415
 
             self.instance_id = await instance_id.async_get(self.hass)
-        try:
-            await self.client.delete_ha_devices(self.instance_id)
-        except Exception as err:
-            _LOGGER.warning("Could not withdraw the shared device list: %s", err)
-            return
-        self.store.data["shared"] = False
-        await self.store.async_save()
+        async with self._share_lock:
+            try:
+                await self.client.delete_ha_devices(self.instance_id)
+            except Exception as err:
+                _LOGGER.warning(
+                    "Could not withdraw the shared device list; iMatrix deletes it "
+                    "after 30 days without an update: %s",
+                    err,
+                )
+                return False
+            self.store.data["shared"] = False
+            await self.store.async_save()
+            return True
