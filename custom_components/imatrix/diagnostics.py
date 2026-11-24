@@ -41,6 +41,14 @@ async def async_get_config_entry_diagnostics(
             "update_interval": str(data.coordinator.update_interval),
             "server_time": str(snapshot.server_time),
             "rate_limit_remaining": data.client.auth.rate_limit_remaining,
+            "event_cursor": data.coordinator.event_cursor,
+        },
+        "stream": None
+        if data.coordinator.push is None
+        else {
+            "state": data.coordinator.push.state,
+            "reconnects": data.coordinator.push.stream.reconnects,
+            "last_event_id": data.coordinator.push.stream.last_event_id,
         },
         "devices": {
             order[sn]: async_redact_data(asdict(device), TO_REDACT)

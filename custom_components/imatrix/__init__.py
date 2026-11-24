@@ -42,6 +42,7 @@ from .const import (
     AUTH_TYPE_OAUTH2,
     CONF_AUTH_TYPE,
     CONF_BASE_URL,
+    CONF_PUSH,
     DOMAIN,
     KEY_EXPIRY_WARNING,
     OAUTH2_CLIENT_ID,
@@ -50,6 +51,7 @@ from .const import (
 )
 from .coordinator import IMatrixCoordinator
 from .helpers import create_api_key_client, create_token_client
+from .push import IMatrixPush
 from .services import async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
@@ -107,6 +109,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> b
         client=client, account=account, coordinator=coordinator
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    if entry.options.get(CONF_PUSH, True):
+        push = IMatrixPush(hass, entry, coordinator, client)
+        coordinator.push = push
+        entry.async_create_background_task(
+            hass, push.async_run(), f"{DOMAIN}_stream_{entry.entry_id}"
+        )
+        entry.async_on_unload(push.async_stop)
     return True
 
 

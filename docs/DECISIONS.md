@@ -82,3 +82,14 @@ the server, so retrying with the old token is never attempted). Deleting the ent
 refresh token, best effort. Entries from 1.1 (API key only) migrate to 1.2 with `auth_type: api_key`.
 OAuth URLs point at the production API; the dev backend is reached with an API key and the advanced
 base URL.
+
+## 2026-11-23: live stream (H4) against the B4 contract
+
+With "Live updates" on (default), each entry keeps one stream open through `pyimatrix.IMatrixStream`,
+subscribed to all devices and all frame types, resuming from the coordinator's event cursor. Frames
+replace the device's readings, position or connectivity in a new snapshot and notify entities
+without rescheduling the poll. While connected, polling runs every 5 minutes as a safety net
+(device list, fault fetches, anything missed). On connect the integration refreshes once, because
+the server does not replay values. A 404 on the upgrade (stream flag off, older backend) leaves the
+entry on polling. A 4401 close starts reauth. A stream down for 30 minutes raises the
+`stream_unavailable` repair; polling continues.

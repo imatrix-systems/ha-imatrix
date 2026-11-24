@@ -327,12 +327,14 @@
         "data": {
           "group_ids": "Groups",
           "scan_interval": "Polling interval",
-          "include_unmapped": "Include unmapped channels"
+          "include_unmapped": "Include unmapped channels",
+          "push": "Live updates"
         },
         "data_description": {
           "group_ids": "Import only devices in these iMatrix groups and their subgroups. Leave empty for all devices.",
           "scan_interval": "How often to ask the iMatrix cloud for new readings, in seconds.",
-          "include_unmapped": "Also create entities for channels iMatrix has no unit or meaning for. They start disabled."
+          "include_unmapped": "Also create entities for channels iMatrix has no unit or meaning for. They start disabled.",
+          "push": "Keep a live connection to the iMatrix cloud so readings, positions and events arrive within seconds. When off, or when the server has no live stream, the integration polls."
         }
       }
     }
@@ -397,6 +399,10 @@
     "no_devices": {
       "title": "iMatrix API key sees no devices",
       "description": "The API key for {title} cannot see any devices. An iMatrix API key sees only the devices in groups granted to the key's user, even when the user is an organization administrator. Grant the user access to the groups in iMatrix, then check the groups selected in the integration options."
+    },
+    "stream_unavailable": {
+      "title": "iMatrix live updates unavailable",
+      "description": "The live connection for {title} has been down for more than 30 minutes. Readings still update by polling. Check that Home Assistant can reach the iMatrix cloud."
     }
   }
 }

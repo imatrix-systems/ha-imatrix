@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -15,10 +15,12 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 from pyimatrix import (
+    ConnectivityFrame,
     Device,
     DeviceKind,
     DeviceState,
     Event,
+    EventFrame,
     EventType,
     Fault,
     IMatrixAuthError,
@@ -30,7 +32,10 @@ from pyimatrix import (
     IMatrixRateLimitError,
     IMatrixResponseError,
     Lamps,
+    PositionFrame,
+    ValuesFrame,
 )
+from pyimatrix import Frame as StreamFrame
 
 from .const import (
     CONF_GROUP_IDS,
@@ -42,6 +47,7 @@ from .const import (
     MANUFACTURER,
     MAX_BACKOFF,
     MAX_EVENT_PAGES,
+    PUSH_POLL_INTERVAL,
     RATE_LIMIT_ISSUE_AFTER,
     WEB_APP_URL,
 )
@@ -49,6 +55,7 @@ from .const import (
 if TYPE_CHECKING:
     from . import IMatrixConfigEntry
     from .backfill import StatisticsBackfill
+    from .push import IMatrixPush
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,6 +107,8 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         self._event_cursor: int | None = None
         self._rate_limited_since: datetime | None = None
         self.backfill: StatisticsBackfill | None = None
+        self.push: IMatrixPush | None = None
+        self._push_connected = False
         # sns first seen in the latest update. Empty when nothing is new.
         self.new_sns: set[int] = set()
 
@@ -123,6 +132,57 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
                 listener(set(self.new_sns))
 
         return self.async_add_listener(on_update)
+
+    @property
+    def event_cursor(self) -> int | None:
+        """Last event id read, from polling or the stream."""
+        return self._event_cursor
+
+    @callback
+    def async_set_push(self, connected: bool) -> None:
+        """Poll every 5 minutes while the stream is up, else at the set interval."""
+        self._push_connected = connected
+        self.update_interval = PUSH_POLL_INTERVAL if connected else self._interval
+
+    @callback
+    def async_apply_frame(self, frame: StreamFrame) -> None:
+        """Merge one stream frame into a new snapshot and notify entities."""
+        data = self.data
+        if data is None:
+            return
+        if isinstance(frame, EventFrame):
+            event = frame.event
+            if self._event_cursor is not None and event.id <= self._event_cursor:
+                return
+            self._event_cursor = event.id
+            if event.sn not in data.devices:
+                return
+            self.data = replace(
+                data,
+                faults=_apply_events(data.faults, (event,)),
+                events=(event,),
+            )
+            self.async_update_listeners()
+            return
+        if not isinstance(frame, (ValuesFrame, PositionFrame, ConnectivityFrame)):
+            return
+        if frame.sn not in data.devices:
+            self._force_refresh = True  # a new device: re-list on the next poll
+            return
+        state = data.states.get(frame.sn)
+        if state is None:
+            device = data.devices[frame.sn]
+            state = DeviceState(
+                connectivity=device.connectivity, position=None, readings={}
+            )
+        if isinstance(frame, ValuesFrame):
+            state = replace(state, readings={**state.readings, **frame.readings})
+        elif isinstance(frame, PositionFrame):
+            state = replace(state, position=frame.position)
+        else:
+            state = replace(state, connectivity=frame.connectivity)
+        self.data = replace(data, states={**data.states, frame.sn: state}, events=())
+        self.async_update_listeners()
 
     async def _async_setup(self) -> None:
         """Start the event cursor at the newest event, so old events never replay."""
@@ -157,8 +217,12 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
             raise UpdateFailed(
                 translation_domain=DOMAIN, translation_key="update_failed"
             ) from err
-        self.update_interval = self._interval
+        self.update_interval = (
+            PUSH_POLL_INTERVAL if self._push_connected else self._interval
+        )
         self._clear_rate_limit()
+        if self.push is not None:
+            self.push.async_check_health()
         self._handle_device_changes(snapshot)
         if self.backfill is not None:
             # Fill first: entities from the previous snapshot exist by now.

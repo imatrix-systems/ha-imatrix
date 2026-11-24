@@ -51,6 +51,7 @@ from .const import (
     CONF_BASE_URL,
     CONF_GROUP_IDS,
     CONF_INCLUDE_UNMAPPED,
+    CONF_PUSH,
     CONF_SCAN_INTERVAL,
     DEFAULT_BASE_URL,
     DEFAULT_SCAN_INTERVAL,
@@ -298,6 +299,7 @@ class IMatrixOptionsFlow(OptionsFlowWithReload):
                     CONF_GROUP_IDS: [int(g) for g in user_input[CONF_GROUP_IDS]],
                     CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
                     CONF_INCLUDE_UNMAPPED: user_input[CONF_INCLUDE_UNMAPPED],
+                    CONF_PUSH: user_input[CONF_PUSH],
                 }
             )
         options = self.config_entry.options
@@ -330,6 +332,9 @@ class IMatrixOptionsFlow(OptionsFlowWithReload):
                         mode=NumberSelectorMode.BOX,
                     )
                 ),
+                vol.Required(
+                    CONF_PUSH, default=options.get(CONF_PUSH, True)
+                ): BooleanSelector(),
                 vol.Required(
                     CONF_INCLUDE_UNMAPPED,
                     default=options.get(CONF_INCLUDE_UNMAPPED, False),

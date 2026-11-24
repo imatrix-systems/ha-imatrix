@@ -8,7 +8,15 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pyimatrix import Account, Device, EventPage, Faults, Latest, Limits
+from pyimatrix import (
+    Account,
+    Device,
+    EventPage,
+    Faults,
+    IMatrixNotFoundError,
+    Latest,
+    Limits,
+)
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.imatrix.const import CONF_BASE_URL, DEFAULT_BASE_URL, DOMAIN
@@ -69,6 +77,8 @@ def mock_client() -> Generator[MagicMock]:
     )
     client.get_faults = AsyncMock(side_effect=lambda sn: load_faults())
     client.auth.rate_limit_remaining = 118
+    # Default: the server has no live stream, so tests poll. Push tests override.
+    client.auth.ws_connect = AsyncMock(side_effect=IMatrixNotFoundError("404"))
     with (
         patch("custom_components.imatrix.create_api_key_client", return_value=client),
         patch(

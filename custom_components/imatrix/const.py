@@ -11,6 +11,7 @@ CONF_ADVANCED: Final = "advanced"
 CONF_GROUP_IDS: Final = "group_ids"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_INCLUDE_UNMAPPED: Final = "include_unmapped"
+CONF_PUSH: Final = "push"
 
 DEFAULT_BASE_URL: Final = "https://api.imatrixsys.com"
 
@@ -32,6 +33,9 @@ DEFAULT_SCAN_INTERVAL: Final = 60
 MIN_SCAN_INTERVAL: Final = 30
 MAX_SCAN_INTERVAL: Final = 1800
 MAX_BACKOFF: Final = timedelta(minutes=30)
+# While the live stream is up, poll only as a safety net.
+PUSH_POLL_INTERVAL: Final = timedelta(minutes=5)
+STREAM_ISSUE_AFTER: Final = timedelta(minutes=30)
 # Re-read the device list every N polls; new devices appear within N x interval.
 DEVICE_REFRESH_EVERY: Final = 10
 

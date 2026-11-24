@@ -36,7 +36,12 @@ async def test_options_flow(
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {CONF_GROUP_IDS: ["10"], CONF_SCAN_INTERVAL: 120, CONF_INCLUDE_UNMAPPED: True},
+        {
+            CONF_GROUP_IDS: ["10"],
+            CONF_SCAN_INTERVAL: 120,
+            CONF_INCLUDE_UNMAPPED: True,
+            "push": False,
+        },
     )
     await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -44,6 +49,7 @@ async def test_options_flow(
         CONF_GROUP_IDS: [10],
         CONF_SCAN_INTERVAL: 120,
         CONF_INCLUDE_UNMAPPED: True,
+        "push": False,
     }
     coordinator = init_integration.runtime_data.coordinator
     assert coordinator.update_interval.total_seconds() == 120
