@@ -2,15 +2,30 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
+import aiohttp
+from homeassistant.components.application_credentials import (
+    ClientCredential,
+    async_import_client_credential,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    ImplementationUnavailableError,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.config_entry_oauth2_flow import (
+    OAuth2Session,
+    async_get_config_entry_implementation,
+)
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 from pyimatrix import (
@@ -22,10 +37,22 @@ from pyimatrix import (
 )
 
 from .backfill import StatisticsBackfill
-from .const import CONF_BASE_URL, DOMAIN, KEY_EXPIRY_WARNING
+from .const import (
+    AUTH_TYPE_API_KEY,
+    AUTH_TYPE_OAUTH2,
+    CONF_AUTH_TYPE,
+    CONF_BASE_URL,
+    DOMAIN,
+    KEY_EXPIRY_WARNING,
+    OAUTH2_CLIENT_ID,
+    OAUTH2_CLIENT_SECRET,
+    OAUTH2_REVOKE_URL,
+)
 from .coordinator import IMatrixCoordinator
-from .helpers import create_api_key_client
+from .helpers import create_api_key_client, create_token_client
 from .services import async_setup_services
+
+_LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -57,9 +84,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> bool:
     """Set up iMatrix from a config entry."""
-    client = create_api_key_client(
-        hass, entry.data[CONF_BASE_URL], entry.data[CONF_API_KEY]
-    )
+    client = await _async_create_client(hass, entry)
     try:
         account = await client.get_account()
     except (IMatrixAuthError, IMatrixPermissionError) as err:
@@ -71,7 +96,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> b
             translation_domain=DOMAIN, translation_key="cannot_connect"
         ) from err
 
-    _check_key_expiry(hass, entry, account)
+    if entry.data.get(CONF_AUTH_TYPE) == AUTH_TYPE_API_KEY:
+        _check_key_expiry(hass, entry, account)
     coordinator = IMatrixCoordinator(hass, entry, client)
     coordinator.backfill = StatisticsBackfill(hass, entry, coordinator)
     await coordinator.backfill.async_load()
@@ -82,6 +108,59 @@ async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> b
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def _async_create_client(
+    hass: HomeAssistant, entry: IMatrixConfigEntry
+) -> IMatrixClient:
+    if entry.data.get(CONF_AUTH_TYPE) == AUTH_TYPE_OAUTH2:
+        # The public client credential ships with the integration; make sure it
+        # is registered even if application_credentials storage was reset.
+        await async_import_client_credential(
+            hass,
+            DOMAIN,
+            ClientCredential(OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, name="iMatrix"),
+        )
+        try:
+            implementation = await async_get_config_entry_implementation(hass, entry)
+        except ImplementationUnavailableError as err:
+            raise ConfigEntryNotReady(
+                translation_domain=DOMAIN, translation_key="cannot_connect"
+            ) from err
+        return create_token_client(hass, OAuth2Session(hass, entry, implementation))
+    return create_api_key_client(
+        hass, entry.data[CONF_BASE_URL], entry.data[CONF_API_KEY]
+    )
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> bool:
+    """Migrate entries. 1.1 had API keys only; 1.2 records the auth type."""
+    if entry.version > 1:
+        return False
+    if entry.minor_version < 2:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, CONF_AUTH_TYPE: AUTH_TYPE_API_KEY},
+            minor_version=2,
+        )
+    return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> None:
+    """Revoke the OAuth2 grant when the entry is deleted. Best effort, never raises."""
+    if entry.data.get(CONF_AUTH_TYPE) != AUTH_TYPE_OAUTH2:
+        return
+    token = entry.data.get("token", {}).get("refresh_token")
+    if not token:
+        return
+    try:
+        await async_get_clientsession(hass).post(
+            OAUTH2_REVOKE_URL,
+            data={"token": token, "client_id": OAUTH2_CLIENT_ID},
+            timeout=aiohttp.ClientTimeout(total=10),
+        )
+    except aiohttp.ClientError, TimeoutError:
+        _LOGGER.debug("Could not revoke the iMatrix authorization")
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> bool:

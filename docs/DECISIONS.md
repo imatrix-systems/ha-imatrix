@@ -70,3 +70,15 @@ filled per poll.
 
 Greg chose to skip unmapped channels on vehicles unless "Include unmapped channels" is on. With the
 option on they are created disabled. Unmapped environmental channels are unchanged.
+
+## 2026-11-23: OAuth2 sign-in (H6) against the B5 contract
+
+"Sign in with iMatrix" is the first option in the setup menu (Greg, Echelon Q868); "Use an API key"
+stays. Home Assistant is a public client: authorization code with PKCE S256, client id
+`home-assistant`, a placeholder secret the server ignores. The integration registers that credential
+itself, so users never type a client id. Refresh tokens rotate on every use; HA's OAuth2 session
+stores the new one, and a 4xx on refresh starts reauth (a replayed token revokes the whole grant on
+the server, so retrying with the old token is never attempted). Deleting the entry revokes the
+refresh token, best effort. Entries from 1.1 (API key only) migrate to 1.2 with `auth_type: api_key`.
+OAuth URLs point at the production API; the dev backend is reached with an API key and the advanced
+base URL.

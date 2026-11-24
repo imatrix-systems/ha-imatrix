@@ -29,6 +29,17 @@ def mock_setup_entry() -> Generator[AsyncMock]:
         yield mock
 
 
+async def _start_api_key_flow(hass: HomeAssistant) -> dict:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["oauth", "api_key"]
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "api_key"}
+    )
+
+
 def _input(key: str = FAKE_KEY, base_url: str = DEFAULT_BASE_URL) -> dict:
     return {"api_key": f"  {key} ", "advanced": {CONF_BASE_URL: base_url}}
 
@@ -36,17 +47,19 @@ def _input(key: str = FAKE_KEY, base_url: str = DEFAULT_BASE_URL) -> dict:
 async def test_user_flow_creates_entry(
     hass: HomeAssistant, mock_client: MagicMock
 ) -> None:
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_USER}
-    )
+    result = await _start_api_key_flow(hass)
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    assert result["step_id"] == "api_key"
     assert result["errors"] == {}
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], _input())
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Example Cold Chain"
-    assert result["data"] == {"api_key": FAKE_KEY, CONF_BASE_URL: DEFAULT_BASE_URL}
+    assert result["data"] == {
+        "auth_type": "api_key",
+        "api_key": FAKE_KEY,
+        CONF_BASE_URL: DEFAULT_BASE_URL,
+    }
     assert result["result"].unique_id == "4242"
     mock_client.factory.assert_called_with(hass, DEFAULT_BASE_URL, FAKE_KEY)
 
@@ -58,9 +71,7 @@ async def test_user_flow_custom_url_and_unnamed_org(
     mock_client.get_account.return_value = account.__class__(
         **{**{f: getattr(account, f) for f in account.__slots__}, "org_name": None}
     )
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_USER}
-    )
+    result = await _start_api_key_flow(hass)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], _input(base_url="https://api-dev.imatrixsys.com/")
     )
@@ -83,9 +94,7 @@ async def test_user_flow_errors_recover(
     hass: HomeAssistant, mock_client: MagicMock, error: Exception, key: str
 ) -> None:
     mock_client.get_account.side_effect = error
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_USER}
-    )
+    result = await _start_api_key_flow(hass)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], _input(base_url="https://api-dev.imatrixsys.com")
     )
@@ -101,9 +110,7 @@ async def test_user_flow_missing_permissions(
     hass: HomeAssistant, mock_client: MagicMock
 ) -> None:
     mock_client.get_account.return_value = make_account(permissions={"device:read"})
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_USER}
-    )
+    result = await _start_api_key_flow(hass)
     result = await hass.config_entries.flow.async_configure(result["flow_id"], _input())
     assert result["errors"] == {"base": "insufficient_permissions"}
 
@@ -112,9 +119,7 @@ async def test_user_flow_already_configured(
     hass: HomeAssistant, mock_client: MagicMock, mock_config_entry: MockConfigEntry
 ) -> None:
     mock_config_entry.add_to_hass(hass)
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_USER}
-    )
+    result = await _start_api_key_flow(hass)
     result = await hass.config_entries.flow.async_configure(result["flow_id"], _input())
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
@@ -176,6 +181,7 @@ async def test_reconfigure_success(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert mock_config_entry.data == {
+        "auth_type": "api_key",
         "api_key": NEW_KEY,
         CONF_BASE_URL: "https://api-dev.imatrixsys.com",
     }

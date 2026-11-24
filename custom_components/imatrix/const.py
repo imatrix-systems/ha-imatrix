@@ -13,6 +13,19 @@ CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_INCLUDE_UNMAPPED: Final = "include_unmapped"
 
 DEFAULT_BASE_URL: Final = "https://api.imatrixsys.com"
+
+# OAuth2 (backend B5, spec 817 FR-C22). Home Assistant is a public client: PKCE,
+# fixed client id, and a placeholder secret the server ignores.
+CONF_AUTH_TYPE: Final = "auth_type"
+AUTH_TYPE_API_KEY: Final = "api_key"
+AUTH_TYPE_OAUTH2: Final = "oauth2"
+OAUTH2_CLIENT_ID: Final = "home-assistant"
+# Not a secret: the server ignores it for this public client.
+OAUTH2_CLIENT_SECRET: Final = "public-client"  # noqa: S105
+OAUTH2_AUTHORIZE_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/authorize"
+OAUTH2_TOKEN_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/token"
+OAUTH2_REVOKE_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/revoke"
+OAUTH2_SCOPE: Final = "imatrix.read"
 WEB_APP_URL: Final = "https://cloud.imatrixsys.com"
 
 DEFAULT_SCAN_INTERVAL: Final = 60

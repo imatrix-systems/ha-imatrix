@@ -8,6 +8,9 @@
     "@greg-phillips"
   ],
   "config_flow": true,
+  "dependencies": [
+    "application_credentials"
+  ],
   "documentation": "https://github.com/imatrix-systems/ha-imatrix",
   "integration_type": "hub",
   "iot_class": "cloud_push",

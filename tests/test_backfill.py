@@ -49,7 +49,12 @@ def _entry() -> MockConfigEntry:
         entry_id=ENTRY_ID,
         title="Example Cold Chain",
         unique_id="4242",
-        data={"api_key": FAKE_KEY, CONF_BASE_URL: DEFAULT_BASE_URL},
+        data={
+            "auth_type": "api_key",
+            "api_key": FAKE_KEY,
+            CONF_BASE_URL: DEFAULT_BASE_URL,
+        },
+        minor_version=2,
     )
 
 

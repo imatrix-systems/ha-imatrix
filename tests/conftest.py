@@ -87,9 +87,13 @@ def mock_config_entry() -> MockConfigEntry:
         domain=DOMAIN,
         title="Example Cold Chain",
         unique_id=str(ORG_ID),
-        data={"api_key": FAKE_KEY, CONF_BASE_URL: DEFAULT_BASE_URL},
+        data={
+            "auth_type": "api_key",
+            "api_key": FAKE_KEY,
+            CONF_BASE_URL: DEFAULT_BASE_URL,
+        },
         version=1,
-        minor_version=1,
+        minor_version=2,
     )
 
 

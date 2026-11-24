@@ -1,27 +1,6 @@
 {
   "config": {
     "step": {
-      "user": {
-        "title": "Connect to iMatrix",
-        "description": "Create an API key in the iMatrix web app under Account Settings, Security, API keys, using the Home Assistant (read-only) preset. The key sees only the devices in groups granted to your user.",
-        "data": {
-          "api_key": "API key"
-        },
-        "data_description": {
-          "api_key": "The key starts with imx_ and is shown once when you create it."
-        },
-        "sections": {
-          "advanced": {
-            "name": "Advanced",
-            "data": {
-              "base_url": "API URL"
-            },
-            "data_description": {
-              "base_url": "Leave as is unless iMatrix support gave you a different address."
-            }
-          }
-        }
-      },
       "reauth_confirm": {
         "title": "Reauthenticate integration",
         "description": "iMatrix rejected the API key for {org}. Enter a new key for the same organization.",
@@ -52,6 +31,42 @@
             }
           }
         }
+      },
+      "api_key": {
+        "title": "Connect to iMatrix",
+        "description": "Create an API key in the iMatrix web app under Account Settings, Security, API keys, using the Home Assistant (read-only) preset. The key sees only the devices in groups granted to your user.",
+        "data": {
+          "api_key": "API key"
+        },
+        "data_description": {
+          "api_key": "The key starts with imx_ and is shown once when you create it."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "data": {
+              "base_url": "API URL"
+            },
+            "data_description": {
+              "base_url": "Leave as is unless iMatrix support gave you a different address."
+            }
+          }
+        }
+      },
+      "user": {
+        "title": "Connect to iMatrix",
+        "description": "Choose how Home Assistant signs in to iMatrix.",
+        "menu_options": {
+          "oauth": "Sign in with iMatrix",
+          "api_key": "Use an API key"
+        }
+      },
+      "pick_implementation": {
+        "title": "Pick an authentication method"
+      },
+      "reauth_oauth": {
+        "title": "Sign in to iMatrix again",
+        "description": "The iMatrix sign-in for {org} expired or was revoked. Sign in again with an account in the same organization."
       }
     },
     "error": {
@@ -65,7 +80,24 @@
       "already_configured": "Account is already configured",
       "reauth_successful": "Re-authentication was successful",
       "reconfigure_successful": "Re-configuration was successful",
-      "wrong_account": "The API key belongs to a different iMatrix organization."
+      "wrong_account": "The API key belongs to a different iMatrix organization.",
+      "authorize_url_timeout": "Timed out generating the iMatrix sign-in link.",
+      "missing_configuration": "The iMatrix sign-in is not configured.",
+      "no_url_available": "No Home Assistant URL is available for the sign-in redirect.",
+      "oauth_error": "iMatrix returned an invalid token.",
+      "oauth_failed": "Getting a token from iMatrix failed.",
+      "oauth_timeout": "Getting a token from iMatrix timed out.",
+      "oauth_unauthorized": "iMatrix refused the authorization.",
+      "user_rejected_authorize": "The iMatrix sign-in was denied.",
+      "oauth_implementation_unavailable": "The iMatrix sign-in is not available right now.",
+      "invalid_auth": "iMatrix rejected the new credential.",
+      "cannot_connect": "Could not connect to iMatrix.",
+      "insufficient_permissions": "The signed-in user cannot read devices or sensor data.",
+      "unsupported_api": "The iMatrix server returned an API version this integration does not support.",
+      "unknown": "Unexpected error"
+    },
+    "create_entry": {
+      "default": "Signed in to iMatrix."
     }
   },
   "exceptions": {

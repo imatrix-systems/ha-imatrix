@@ -7,15 +7,21 @@ from collections.abc import Mapping
 from typing import Any
 
 import probatio as vol
+from homeassistant.components.application_credentials import (
+    ClientCredential,
+    async_import_client_credential,
+)
 from homeassistant.config_entries import (
+    SOURCE_REAUTH,
+    SOURCE_RECONFIGURE,
     ConfigEntry,
-    ConfigFlow,
     ConfigFlowResult,
     OptionsFlowWithReload,
 )
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import section
+from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -31,13 +37,17 @@ from homeassistant.helpers.selector import (
 from pyimatrix import (
     Account,
     IMatrixAuthError,
+    IMatrixClient,
     IMatrixConnectionError,
     IMatrixPermissionError,
     IMatrixUnsupportedSchemaError,
 )
 
 from .const import (
+    AUTH_TYPE_API_KEY,
+    AUTH_TYPE_OAUTH2,
     CONF_ADVANCED,
+    CONF_AUTH_TYPE,
     CONF_BASE_URL,
     CONF_GROUP_IDS,
     CONF_INCLUDE_UNMAPPED,
@@ -47,9 +57,11 @@ from .const import (
     DOMAIN,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
+    OAUTH2_CLIENT_ID,
+    OAUTH2_CLIENT_SECRET,
     REQUIRED_PERMISSIONS,
 )
-from .helpers import create_api_key_client
+from .helpers import StaticTokenAuth, create_api_key_client
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,11 +94,19 @@ VALIDATION_ERRORS: dict[type[Exception], str] = {
 REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_API_KEY): API_KEY_SELECTOR})
 
 
-class IMatrixConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for iMatrix."""
+class IMatrixConfigFlow(
+    config_entry_oauth2_flow.AbstractOAuth2FlowHandler, domain=DOMAIN
+):
+    """Sign in with iMatrix (OAuth2, default) or with an API key."""
 
+    DOMAIN = DOMAIN
     VERSION = 1
-    MINOR_VERSION = 1
+    MINOR_VERSION = 2
+
+    @property
+    def logger(self) -> logging.Logger:
+        """Logger for the OAuth2 helper."""
+        return _LOGGER
 
     @staticmethod
     @callback
@@ -94,27 +114,80 @@ class IMatrixConfigFlow(ConfigFlow, domain=DOMAIN):
         """Return the options flow."""
         return IMatrixOptionsFlow()
 
+    async def _async_check(
+        self, client: IMatrixClient
+    ) -> tuple[Account | None, str | None]:
+        """Return the account, or an error key."""
+        try:
+            account = await client.get_account()
+        except tuple(VALIDATION_ERRORS) as err:
+            return None, VALIDATION_ERRORS[type(err)]
+        except Exception:
+            _LOGGER.exception("Unexpected error validating iMatrix credentials")
+            return None, "unknown"
+        if not account.permissions >= REQUIRED_PERMISSIONS:
+            return None, "insufficient_permissions"
+        return account, None
+
     async def _async_validate(
         self, base_url: str, api_key: str
     ) -> tuple[Account | None, dict[str, str]]:
         """Return the account, or form errors."""
-        client = create_api_key_client(self.hass, base_url, api_key)
-        try:
-            account = await client.get_account()
-        except tuple(VALIDATION_ERRORS) as err:
-            return None, {"base": VALIDATION_ERRORS[type(err)]}
-        except Exception:
-            _LOGGER.exception("Unexpected error validating iMatrix credentials")
-            return None, {"base": "unknown"}
-        if not account.permissions >= REQUIRED_PERMISSIONS:
-            return None, {"base": "insufficient_permissions"}
-        return account, {}
+        account, error = await self._async_check(
+            create_api_key_client(self.hass, base_url, api_key)
+        )
+        return account, ({"base": error} if error else {})
 
     @staticmethod
     def _title(account: Account) -> str:
         return account.org_name or f"iMatrix org {account.org_id}"
 
     async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose how to sign in."""
+        return self.async_show_menu(step_id="user", menu_options=["oauth", "api_key"])
+
+    async def async_step_oauth(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Sign in with iMatrix. The public client credential ships with us."""
+        await async_import_client_credential(
+            self.hass,
+            DOMAIN,
+            ClientCredential(OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, name="iMatrix"),
+        )
+        return await self.async_step_pick_implementation()
+
+    async def async_oauth_create_entry(self, data: dict[str, Any]) -> ConfigFlowResult:
+        """Validate the new token, then create or update the entry."""
+        account, error = await self._async_check(
+            IMatrixClient(StaticTokenAuth(self.hass, data["token"]["access_token"]))
+        )
+        if account is None:
+            return self.async_abort(reason=error or "unknown")
+        await self.async_set_unique_id(str(account.org_id))
+        entry_data = {
+            **data,
+            CONF_AUTH_TYPE: AUTH_TYPE_OAUTH2,
+            CONF_BASE_URL: DEFAULT_BASE_URL,
+        }
+        if self.source == SOURCE_REAUTH:
+            self._abort_if_unique_id_mismatch(reason="wrong_account")
+            return self.async_update_reload_and_abort(
+                self._get_reauth_entry(), data=entry_data
+            )
+        if self.source == SOURCE_RECONFIGURE:
+            self._abort_if_unique_id_mismatch(reason="wrong_account")
+            return self.async_update_reload_and_abort(
+                self._get_reconfigure_entry(),
+                title=self._title(account),
+                data=entry_data,
+            )
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(title=self._title(account), data=entry_data)
+
+    async def async_step_api_key(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Ask for an API key."""
@@ -129,10 +202,14 @@ class IMatrixConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=self._title(account),
-                    data={CONF_API_KEY: api_key, CONF_BASE_URL: base_url},
+                    data={
+                        CONF_AUTH_TYPE: AUTH_TYPE_API_KEY,
+                        CONF_API_KEY: api_key,
+                        CONF_BASE_URL: base_url,
+                    },
                 )
         return self.async_show_form(
-            step_id="user",
+            step_id="api_key",
             data_schema=_schema(base_url, collapsed=base_url == DEFAULT_BASE_URL),
             errors=errors,
         )
@@ -140,8 +217,21 @@ class IMatrixConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(
         self, entry_data: Mapping[str, Any]
     ) -> ConfigFlowResult:
-        """Start reauthentication after the key was rejected."""
+        """Start reauthentication after the credential was rejected."""
+        if entry_data.get(CONF_AUTH_TYPE) == AUTH_TYPE_OAUTH2:
+            return await self.async_step_reauth_oauth()
         return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_oauth(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Tell the user to sign in again, then start the OAuth2 flow."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="reauth_oauth",
+                description_placeholders={"org": self._get_reauth_entry().title},
+            )
+        return await self.async_step_oauth()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
@@ -170,9 +260,11 @@ class IMatrixConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Change the API key or base URL of an existing entry."""
-        errors: dict[str, str] = {}
+        """Change the credential or base URL of an existing entry."""
         entry = self._get_reconfigure_entry()
+        if entry.data.get(CONF_AUTH_TYPE) == AUTH_TYPE_OAUTH2:
+            return await self.async_step_oauth()
+        errors: dict[str, str] = {}
         base_url = entry.data[CONF_BASE_URL]
         if user_input is not None:
             base_url = user_input[CONF_ADVANCED][CONF_BASE_URL].rstrip("/")
