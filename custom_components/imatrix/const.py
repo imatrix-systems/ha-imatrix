@@ -32,6 +32,11 @@ KEY_EXPIRY_WARNING: Final = timedelta(days=14)
 # The active-faults sensor lists at most this many codes as an attribute.
 MAX_FAULT_CODES: Final = 20
 
+# Statistics backfill after an outage (FR-H14).
+BACKFILL_AFTER: Final = timedelta(hours=1)
+BACKFILL_MAX: Final = timedelta(days=7)
+BACKFILL_DEVICES_PER_POLL: Final = 5
+
 # Speed above which a vehicle counts as moving.
 MOVING_SPEED_KMH: Final = 3.0
 # HA wants accuracy in meters. HDOP x this factor is the usual rough estimate.

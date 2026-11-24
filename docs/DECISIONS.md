@@ -55,3 +55,18 @@ Setup loaded with 115 of 120 requests per minute left after the first poll.
   channel and the ignition sensor for any device with an ignition channel. Kind only gates
   vehicle-only entities (moving, faults, lamps).
 - `/events` answers 404 until backend B3 deploys; the integration treats that as "no event feed".
+
+## 2026-11-23: statistics backfill fills measurement sensors only
+
+FR-H14 names measurement and total_increasing sensors. Only `measurement` sensors are filled: hourly
+mean, min and max from `/history`, converted to the entity's display unit, imported as the entity's own
+statistics. A total_increasing statistic carries a running `sum`; importing hours into a gap would
+need every later row re-based. HA already attributes the whole increase across a gap to the first
+hour after it, so odometer and engine-hours totals stay correct; only their hourly split is lost.
+The last good poll is stored per entry, so a gap that spans a restart is found. Five devices are
+filled per poll.
+
+## 2026-11-23: unmapped vehicle channels need the option (Echelon Q908)
+
+Greg chose to skip unmapped channels on vehicles unless "Include unmapped channels" is on. With the
+option on they are created disabled. Unmapped environmental channels are unchanged.

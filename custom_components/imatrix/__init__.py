@@ -21,6 +21,7 @@ from pyimatrix import (
     IMatrixPermissionError,
 )
 
+from .backfill import StatisticsBackfill
 from .const import CONF_BASE_URL, DOMAIN, KEY_EXPIRY_WARNING
 from .coordinator import IMatrixCoordinator
 from .helpers import create_api_key_client
@@ -72,6 +73,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> b
 
     _check_key_expiry(hass, entry, account)
     coordinator = IMatrixCoordinator(hass, entry, client)
+    coordinator.backfill = StatisticsBackfill(hass, entry, coordinator)
+    await coordinator.backfill.async_load()
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = IMatrixData(

@@ -10,57 +10,21 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION as PPM
 from homeassistant.const import (
-    DEGREE,
-    PERCENTAGE,
-    REVOLUTIONS_PER_MINUTE,
-    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
-    UnitOfElectricCurrent,
-    UnitOfElectricPotential,
-    UnitOfLength,
-    UnitOfMass,
-    UnitOfPressure,
-    UnitOfSpeed,
-    UnitOfTemperature,
-    UnitOfTime,
-    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
-from pyimatrix import Channel, ChannelMode, ConnectivityState, DeviceKind
+from pyimatrix import Channel, ChannelMode, ConnectivityState, Device, DeviceKind
 
 from . import IMatrixConfigEntry
 from .const import CONF_INCLUDE_UNMAPPED, MAX_FAULT_CODES
 from .coordinator import IMatrixCoordinator
 from .entity import IMatrixEntity
+from .units import channel_class_and_unit
 
 PARALLEL_UPDATES = 0
-
-# quantityKind -> (device class, HA unit). None unit means "take it from the channel".
-QUANTITY: dict[str, tuple[SensorDeviceClass | None, str | None]] = {
-    "temperature": (SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS),
-    "humidity": (SensorDeviceClass.HUMIDITY, PERCENTAGE),
-    "percentage": (None, PERCENTAGE),
-    "speed": (SensorDeviceClass.SPEED, UnitOfSpeed.KILOMETERS_PER_HOUR),
-    "distance": (SensorDeviceClass.DISTANCE, None),
-    "duration": (SensorDeviceClass.DURATION, UnitOfTime.HOURS),
-    "voltage": (SensorDeviceClass.VOLTAGE, UnitOfElectricPotential.VOLT),
-    "current": (SensorDeviceClass.CURRENT, UnitOfElectricCurrent.AMPERE),
-    "pressure": (SensorDeviceClass.PRESSURE, UnitOfPressure.KPA),
-    "volume": (SensorDeviceClass.VOLUME_STORAGE, UnitOfVolume.LITERS),
-    "mass": (SensorDeviceClass.WEIGHT, UnitOfMass.KILOGRAMS),
-    "signal_strength": (
-        SensorDeviceClass.SIGNAL_STRENGTH,
-        SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
-    ),
-    "concentration": (None, PPM),
-    "rotation_speed": (None, REVOLUTIONS_PER_MINUTE),
-    "angle": (None, DEGREE),
-}
-DISTANCE_UNITS = {"km": UnitOfLength.KILOMETERS, "m": UnitOfLength.METERS}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -121,7 +85,7 @@ EVENT_KEYS = frozenset(
 DEFAULT_PRECISION = {SensorDeviceClass.TEMPERATURE: 1, SensorDeviceClass.HUMIDITY: 0}
 
 
-def _should_create(channel: Channel, include_unmapped: bool) -> bool:
+def _should_create(device: Device, channel: Channel, include_unmapped: bool) -> bool:
     if channel.key in SKIP_KEYS:
         return False
     # Too many states to list (for example the OBD-II DTC sensor). Faults come
@@ -130,7 +94,8 @@ def _should_create(channel: Channel, include_unmapped: bool) -> bool:
         return False
     if channel.is_mapped:
         return True
-    if channel.mode is ChannelMode.STATEFUL:
+    # Vehicles carry hundreds of unmapped CAN signals (Greg, Echelon Q908).
+    if device.kind is DeviceKind.VEHICLE or channel.mode is ChannelMode.STATEFUL:
         return include_unmapped
     return channel.quantity_kind is not None or include_unmapped
 
@@ -149,7 +114,7 @@ def build_sensors(
         entities.extend(
             IMatrixChannelSensor(coordinator, sn, channel)
             for channel in device.channels
-            if _should_create(channel, include_unmapped)
+            if _should_create(device, channel, include_unmapped)
         )
     return entities
 
@@ -194,11 +159,7 @@ class IMatrixChannelSensor(IMatrixEntity, SensorEntity):
             self._attr_entity_registry_enabled_default = channel.key not in EVENT_KEYS
             return
 
-        device_class, unit = QUANTITY.get(channel.quantity_kind or "", (None, None))
-        if channel.quantity_kind == "distance":
-            unit = DISTANCE_UNITS.get(channel.unit or "", channel.unit)
-        elif unit is None:
-            unit = channel.unit
+        device_class, unit = channel_class_and_unit(channel)
         if (
             channel.quantity_kind == "percentage"
             and "batt" in (channel.name or "").lower()

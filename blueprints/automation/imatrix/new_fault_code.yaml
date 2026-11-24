@@ -1,0 +1,35 @@
+blueprint:
+  name: iMatrix new fault code
+  description: Notify when a vehicle sets a diagnostic trouble code.
+  domain: automation
+  source_url: https://github.com/imatrix-systems/ha-imatrix/blob/main/blueprints/automation/imatrix/new_fault_code.yaml
+  input:
+    faults:
+      name: Fault codes event entity
+      selector:
+        entity:
+          filter:
+            - integration: imatrix
+              domain: event
+    notify_device:
+      name: Phone to notify
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+mode: queued
+triggers:
+  - trigger: state
+    entity_id: !input faults
+    not_from: unavailable
+conditions:
+  - condition: template
+    value_template: "{{ trigger.to_state.attributes.event_type == 'set' }}"
+actions:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: "Fault code {{ trigger.to_state.attributes.code }}"
+    message: >-
+      {{ trigger.to_state.attributes.name or 'Unknown fault' }}
+      (severity {{ trigger.to_state.attributes.severity }}).

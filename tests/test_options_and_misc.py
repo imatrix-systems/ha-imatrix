@@ -50,6 +50,11 @@ async def test_options_flow(
     assert mock_client.get_devices.call_args.kwargs["group_ids"] == [10]
     # Unmapped channels now exist: the CAN gear (scalar) and door state (stateful).
     registry = er.async_get(hass)
+    can_odo = registry.async_get_entity_id("sensor", DOMAIN, "1000000001_617")
+    assert can_odo is not None
+    assert (
+        registry.async_get(can_odo).disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    )
     assert registry.async_get_entity_id("sensor", DOMAIN, "1000000001_250900")
     door = registry.async_get_entity_id("sensor", DOMAIN, "1000000001_250901")
     assert door is not None

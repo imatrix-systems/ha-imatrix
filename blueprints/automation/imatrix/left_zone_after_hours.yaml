@@ -1,0 +1,53 @@
+blueprint:
+  name: iMatrix vehicle left a zone after hours
+  description: Notify when a vehicle leaves a Home Assistant zone outside working hours.
+  domain: automation
+  source_url: https://github.com/imatrix-systems/ha-imatrix/blob/main/blueprints/automation/imatrix/left_zone_after_hours.yaml
+  input:
+    vehicle:
+      name: Vehicle
+      selector:
+        entity:
+          filter:
+            - integration: imatrix
+              domain: device_tracker
+    zone:
+      name: Zone
+      selector:
+        entity:
+          filter:
+            - domain: zone
+    after:
+      name: After-hours start
+      default: "20:00:00"
+      selector:
+        time:
+    before:
+      name: After-hours end
+      default: "06:00:00"
+      selector:
+        time:
+    notify_device:
+      name: Phone to notify
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+mode: single
+triggers:
+  - trigger: zone
+    entity_id: !input vehicle
+    zone: !input zone
+    event: leave
+conditions:
+  - condition: time
+    after: !input after
+    before: !input before
+actions:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: Vehicle moved after hours
+    message: >-
+      {{ state_attr(trigger.entity_id, 'friendly_name') }} left
+      {{ state_attr(trigger.zone.entity_id, 'friendly_name') }} at {{ now().strftime('%H:%M') }}.

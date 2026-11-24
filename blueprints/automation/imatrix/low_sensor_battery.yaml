@@ -1,0 +1,40 @@
+blueprint:
+  name: iMatrix low sensor battery
+  description: Notify when an iMatrix sensor battery drops below a level.
+  domain: automation
+  source_url: https://github.com/imatrix-systems/ha-imatrix/blob/main/blueprints/automation/imatrix/low_sensor_battery.yaml
+  input:
+    battery:
+      name: Battery sensor
+      selector:
+        entity:
+          filter:
+            - integration: imatrix
+              domain: sensor
+              device_class: battery
+    threshold:
+      name: Battery level
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 80
+          unit_of_measurement: "%"
+    notify_device:
+      name: Phone to notify
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+mode: single
+triggers:
+  - trigger: numeric_state
+    entity_id: !input battery
+    below: !input threshold
+actions:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: Sensor battery low
+    message: >-
+      {{ state_attr(trigger.entity_id, 'friendly_name') }} is at {{ states(trigger.entity_id) }}%.

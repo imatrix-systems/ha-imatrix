@@ -1,0 +1,63 @@
+blueprint:
+  name: iMatrix temperature out of range
+  description: >-
+    Notify when an iMatrix temperature probe stays outside a range for a set time.
+    Use it for freezers, fridges and cold-chain loads.
+  domain: automation
+  source_url: https://github.com/imatrix-systems/ha-imatrix/blob/main/blueprints/automation/imatrix/temperature_out_of_range.yaml
+  input:
+    probe:
+      name: Temperature probe
+      selector:
+        entity:
+          filter:
+            - integration: imatrix
+              domain: sensor
+              device_class: temperature
+    low:
+      name: Lowest allowed temperature
+      selector:
+        number:
+          min: -100
+          max: 100
+          step: 0.5
+          unit_of_measurement: "°"
+    high:
+      name: Highest allowed temperature
+      selector:
+        number:
+          min: -100
+          max: 100
+          step: 0.5
+          unit_of_measurement: "°"
+    duration:
+      name: For at least
+      default:
+        minutes: 10
+      selector:
+        duration:
+    notify_device:
+      name: Phone to notify
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+mode: single
+max_exceeded: silent
+triggers:
+  - trigger: numeric_state
+    entity_id: !input probe
+    above: !input high
+    for: !input duration
+  - trigger: numeric_state
+    entity_id: !input probe
+    below: !input low
+    for: !input duration
+actions:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: Temperature out of range
+    message: >-
+      {{ state_attr(trigger.entity_id, 'friendly_name') }} is at
+      {{ states(trigger.entity_id) }}{{ state_attr(trigger.entity_id, 'unit_of_measurement') }}.

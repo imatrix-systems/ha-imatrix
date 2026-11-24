@@ -65,16 +65,12 @@ async def test_vehicle_entities(
     assert f"{TRUCK}_2" not in unique_ids
     assert unique_ids[f"{TRUCK}_ignition"].domain == "binary_sensor"
     assert f"{TRUCK}_93" not in unique_ids
-    # Unmapped CAN signals on a vehicle start disabled.
-    assert (
-        unique_ids[f"{TRUCK}_617"].disabled_by is er.RegistryEntryDisabler.INTEGRATION
-    )
-    assert (
-        unique_ids[f"{TRUCK}_150"].disabled_by is er.RegistryEntryDisabler.INTEGRATION
-    )
-    assert (
-        unique_ids[f"{TRUCK}_300"].disabled_by is er.RegistryEntryDisabler.INTEGRATION
-    )
+    # Unmapped vehicle channels are not created without the option (Q908).
+    assert f"{TRUCK}_617" not in unique_ids
+    # Engine details and event flags start disabled.
+    for sensor_id in (150, 300):
+        entry = unique_ids[f"{TRUCK}_{sensor_id}"]
+        assert entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION
     # Unmapped channels with no unit meaning are skipped without the option.
     assert f"{TRUCK}_250900" not in unique_ids
     assert f"{TRUCK}_250901" not in unique_ids

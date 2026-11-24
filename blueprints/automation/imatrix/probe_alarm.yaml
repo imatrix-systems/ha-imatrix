@@ -1,0 +1,37 @@
+blueprint:
+  name: iMatrix probe alarm
+  description: >-
+    Notify when an iMatrix channel crosses one of the thresholds set in iMatrix.
+    Enable the channel's alarm entity first; it starts disabled.
+  domain: automation
+  source_url: https://github.com/imatrix-systems/ha-imatrix/blob/main/blueprints/automation/imatrix/probe_alarm.yaml
+  input:
+    alarm:
+      name: Alarm entity
+      selector:
+        entity:
+          filter:
+            - integration: imatrix
+              domain: binary_sensor
+              device_class: problem
+    notify_device:
+      name: Phone to notify
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+mode: queued
+triggers:
+  - trigger: state
+    entity_id: !input alarm
+    from: "off"
+    to: "on"
+actions:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: iMatrix alarm
+    message: >-
+      {{ state_attr(trigger.entity_id, 'friendly_name') }}:
+      {{ state_attr(trigger.entity_id, 'level') }}
+      ({{ state_attr(trigger.entity_id, 'side') }} threshold).

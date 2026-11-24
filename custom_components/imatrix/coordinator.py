@@ -48,6 +48,7 @@ from .const import (
 
 if TYPE_CHECKING:
     from . import IMatrixConfigEntry
+    from .backfill import StatisticsBackfill
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         self._known: set[int] = set()
         self._event_cursor: int | None = None
         self._rate_limited_since: datetime | None = None
+        self.backfill: StatisticsBackfill | None = None
         # sns first seen in the latest update. Empty when nothing is new.
         self.new_sns: set[int] = set()
 
@@ -158,6 +160,10 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         self.update_interval = self._interval
         self._clear_rate_limit()
         self._handle_device_changes(snapshot)
+        if self.backfill is not None:
+            # Fill first: entities from the previous snapshot exist by now.
+            await self.backfill.async_step()
+            self.backfill.async_mark_success(list(snapshot.devices))
         return snapshot
 
     async def _async_fetch(self) -> IMatrixSnapshot:
