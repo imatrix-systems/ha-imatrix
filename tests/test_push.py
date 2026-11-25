@@ -107,6 +107,11 @@ async def test_push_frames_update_entities(
     )
     await hass.async_block_till_done()
     assert hass.states.get("sensor.truck_12_speed").state == "88.0"
+    # A frame updates only that device's entities, never the whole account.
+    with patch.object(coordinator, "async_update_listeners") as update_all:
+        stream.on_frame(ValuesFrame(sn=TRUCK, ingest_at=None, readings={}))
+        await hass.async_block_till_done()
+    update_all.assert_not_called()
     assert hass.states.get("sensor.truck_12_odometer").state == "120455.2"
 
     position = Position(40.0, -121.0, None, None, 0.0, 2.0, 9, None, False)

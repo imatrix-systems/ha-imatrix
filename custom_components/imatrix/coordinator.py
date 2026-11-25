@@ -111,6 +111,8 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         self._push_connected = False
         # sns first seen in the latest update. Empty when nothing is new.
         self.new_sns: set[int] = set()
+        # Entities by device, so a stream frame updates one device, not the account.
+        self._device_listeners: dict[int, list[CALLBACK_TYPE]] = {}
 
     @property
     def _group_ids(self) -> list[int] | None:
@@ -139,6 +141,27 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         return self._event_cursor
 
     @callback
+    def async_add_device_listener(
+        self, sn: int, listener: CALLBACK_TYPE
+    ) -> CALLBACK_TYPE:
+        """Call listener when a stream frame changes this device."""
+        listeners = self._device_listeners.setdefault(sn, [])
+        listeners.append(listener)
+
+        @callback
+        def remove() -> None:
+            listeners.remove(listener)
+            if not listeners:
+                self._device_listeners.pop(sn, None)
+
+        return remove
+
+    @callback
+    def _async_update_device(self, sn: int) -> None:
+        for listener in list(self._device_listeners.get(sn, ())):
+            listener()
+
+    @callback
     def async_set_push(self, connected: bool) -> None:
         """Poll every 5 minutes while the stream is up, else at the set interval."""
         self._push_connected = connected
@@ -162,7 +185,7 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
                 faults=_apply_events(data.faults, (event,)),
                 events=(event,),
             )
-            self.async_update_listeners()
+            self._async_update_device(event.sn)
             return
         if not isinstance(frame, (ValuesFrame, PositionFrame, ConnectivityFrame)):
             return
@@ -182,7 +205,7 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         else:
             state = replace(state, connectivity=frame.connectivity)
         self.data = replace(data, states={**data.states, frame.sn: state}, events=())
-        self.async_update_listeners()
+        self._async_update_device(frame.sn)
 
     async def _async_setup(self) -> None:
         """Start the event cursor at the newest event, so old events never replay."""
