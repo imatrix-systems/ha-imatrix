@@ -12,6 +12,10 @@ CONF_GROUP_IDS: Final = "group_ids"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_INCLUDE_UNMAPPED: Final = "include_unmapped"
 CONF_PUSH: Final = "push"
+# Spec 822 FR-23, FR-28: floor plan sync (plan id, empty for off) and opt-in device list
+# sharing.
+CONF_FLOOR_PLAN_ID: Final = "floor_plan_id"
+CONF_SHARE_DEVICES: Final = "share_devices"
 
 DEFAULT_BASE_URL: Final = "https://api.imatrixsys.com"
 
@@ -27,6 +31,8 @@ OAUTH2_AUTHORIZE_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/authorize"
 OAUTH2_TOKEN_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/token"
 OAUTH2_REVOKE_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/revoke"
 OAUTH2_SCOPE: Final = "imatrix.read"
+# Spec 822 FR-30: asked for only when the user turns device sharing on.
+OAUTH2_SCOPE_HA_DEVICES: Final = "imatrix.ha_devices"
 WEB_APP_URL: Final = "https://cloud.imatrixsys.com"
 
 DEFAULT_SCAN_INTERVAL: Final = 60

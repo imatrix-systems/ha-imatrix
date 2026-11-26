@@ -42,7 +42,9 @@ from .const import (
     AUTH_TYPE_OAUTH2,
     CONF_AUTH_TYPE,
     CONF_BASE_URL,
+    CONF_FLOOR_PLAN_ID,
     CONF_PUSH,
+    CONF_SHARE_DEVICES,
     DOMAIN,
     KEY_EXPIRY_WARNING,
     OAUTH2_CLIENT_ID,
@@ -50,6 +52,7 @@ from .const import (
     OAUTH2_REVOKE_URL,
 )
 from .coordinator import IMatrixCoordinator
+from .floor_plan import FloorPlanManager, FloorPlanStore
 from .helpers import create_api_key_client, create_token_client
 from .push import IMatrixPush
 from .services import async_setup_services
@@ -73,6 +76,7 @@ class IMatrixData:
     client: IMatrixClient
     account: Account
     coordinator: IMatrixCoordinator
+    floor_plan: FloorPlanManager | None = None
 
 
 type IMatrixConfigEntry = ConfigEntry[IMatrixData]
@@ -109,6 +113,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> b
         client=client, account=account, coordinator=coordinator
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    plan_id = entry.options.get(CONF_FLOOR_PLAN_ID) or None
+    share = bool(entry.options.get(CONF_SHARE_DEVICES, False)) and plan_id is not None
+    if plan_id or CONF_SHARE_DEVICES in entry.options:
+        manager = FloorPlanManager(hass, entry, client, plan_id, share)
+        entry.runtime_data.floor_plan = manager
+        entry.async_create_background_task(
+            hass, manager.async_start(), f"{DOMAIN}_floor_plan_{entry.entry_id}"
+        )
+        entry.async_on_unload(manager.async_stop)
 
     if entry.options.get(CONF_PUSH, True):
         push = IMatrixPush(hass, entry, coordinator, client)
@@ -157,7 +171,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) ->
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> None:
-    """Revoke the OAuth2 grant when the entry is deleted. Best effort, never raises."""
+    """Withdraw a shared device list, then revoke the OAuth2 grant. Never raises."""
+    await _async_withdraw_shared_devices(hass, entry)
     if entry.data.get(CONF_AUTH_TYPE) != AUTH_TYPE_OAUTH2:
         return
     token = entry.data.get("token", {}).get("refresh_token")
@@ -171,6 +186,26 @@ async def async_remove_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> 
         )
     except aiohttp.ClientError, TimeoutError:
         _LOGGER.debug("Could not revoke the iMatrix authorization")
+
+
+async def _async_withdraw_shared_devices(
+    hass: HomeAssistant, entry: IMatrixConfigEntry
+) -> None:
+    """Delete the shared device list and the id map (spec 822 FR-29)."""
+    store = FloorPlanStore(hass, entry.entry_id)
+    await store.async_load()
+    try:
+        if store.data.get("shared"):
+            client = await _async_create_client(hass, entry)
+            manager = FloorPlanManager(hass, entry, client, None, False)
+            await manager.async_withdraw_devices()
+    except Exception as err:
+        _LOGGER.warning(
+            "Could not withdraw the shared device list; iMatrix deletes it after 30 "
+            "days without an update: %s",
+            err,
+        )
+    await store.async_remove()
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> bool:
