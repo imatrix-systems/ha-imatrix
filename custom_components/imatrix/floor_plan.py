@@ -541,6 +541,7 @@ class FloorPlanManager:
         self.store = FloorPlanStore(hass, entry.entry_id)
         self.pending: FloorPlanSync | None = None
         self.instance_id: str | None = None
+        self.cards: Any = None
         self._unsubs: list[Any] = []
         self._share_timer: Any = None
         self._stopped = False
@@ -561,6 +562,11 @@ class FloorPlanManager:
         await self.store.async_load()
         self.instance_id = await instance_id.async_get(self.hass)
         if self.plan_id:
+            from .floor_plan_card import FloorPlanCards  # noqa: PLC0415
+
+            self.cards = FloorPlanCards(
+                self.hass, self.client, self.plan_id, self.store, self.instance_id
+            )
             await self.async_check()
             self._unsubs.append(
                 async_track_time_interval(

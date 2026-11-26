@@ -124,6 +124,9 @@
     },
     "api_error": {
       "message": "The iMatrix cloud could not answer the request."
+    },
+    "floor_plan_off": {
+      "message": "This iMatrix entry has no floor plan chosen. Choose one in the integration options."
     }
   },
   "entity": {
@@ -387,6 +390,24 @@
         "end": {
           "name": "End",
           "description": "End of the period. Defaults to now."
+        }
+      }
+    },
+    "floor_plan_dashboard": {
+      "name": "Floor plan dashboard",
+      "description": "Returns a dashboard view per floor plan level for you to paste into a dashboard.",
+      "fields": {
+        "config_entry_id": {
+          "name": "iMatrix entry",
+          "description": "The iMatrix integration entry with a floor plan."
+        },
+        "card": {
+          "name": "Card",
+          "description": "picture_elements uses the built-in Picture elements card. ha_floorplan needs the ha-floorplan card from HACS."
+        },
+        "level_id": {
+          "name": "Level",
+          "description": "One level id. Leave empty for every level."
         }
       }
     }

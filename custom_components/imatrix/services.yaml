@@ -32,3 +32,21 @@ get_history:
     end:
       selector:
         datetime:
+floor_plan_dashboard:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: imatrix
+    card:
+      required: true
+      default: picture_elements
+      selector:
+        select:
+          options:
+            - picture_elements
+            - ha_floorplan
+    level_id:
+      selector:
+        text:

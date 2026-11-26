@@ -53,6 +53,7 @@ from .const import (
 )
 from .coordinator import IMatrixCoordinator
 from .floor_plan import FloorPlanManager, FloorPlanStore
+from .floor_plan_card import FloorPlanSvgView
 from .helpers import create_api_key_client, create_token_client
 from .push import IMatrixPush
 from .services import async_setup_services
@@ -83,8 +84,9 @@ type IMatrixConfigEntry = ConfigEntry[IMatrixData]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register actions. They live for the whole HA run, not per entry."""
+    """Register actions and the floor plan image view for the whole HA run."""
     async_setup_services(hass)
+    hass.http.register_view(FloorPlanSvgView(hass))
     return True
 
 
