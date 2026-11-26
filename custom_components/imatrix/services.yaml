@@ -50,3 +50,7 @@ floor_plan_dashboard:
     level_id:
       selector:
         text:
+    new_link:
+      default: false
+      selector:
+        boolean:

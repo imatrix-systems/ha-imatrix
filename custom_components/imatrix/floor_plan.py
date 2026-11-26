@@ -614,6 +614,8 @@ class FloorPlanManager:
         if plan is None:
             ir.async_delete_issue(self.hass, DOMAIN, issue_id(self.entry.entry_id))
             return
+        if self.cards is not None:
+            self.cards.note_revision(int(plan.revision))
         try:
             desired = await self.client.get_floor_plan_desired(
                 plan.id, instance_id=self.instance_id

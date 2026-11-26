@@ -23,21 +23,25 @@ from custom_components.imatrix.floor_plan_card import (
 
 from .test_floor_plan import desired
 
+L0 = "00000000-0000-4000-8000-000000000000"
+L1 = "00000000-0000-4000-8000-000000000001"
+L9 = "00000000-0000-4000-8000-000000000009"
+
 
 def level(level_id: str, revision: int = 3, sn: str = "1001") -> FloorPlanLevelCard:
     """Return a level card as the cloud sends it."""
     return FloorPlanLevelCard.from_dict(
         {
             "revision": revision,
-            "level": {"id": level_id, "name": f"Level {level_id}", "ordinal": 0},
+            "level": {"id": level_id, "name": f"Level {level_id[-1]}", "ordinal": 0},
             "levels": [
-                {"id": "L0", "name": "Level L0", "ordinal": 0},
-                {"id": "L1", "name": "Level L1", "ordinal": 1},
+                {"id": L0, "name": "Level 0", "ordinal": 0},
+                {"id": L1, "name": "Level 1", "ordinal": 1},
             ],
-            "svg": f'<svg><g id="fpm-pl-{level_id}"/></svg>',
+            "svg": f'<svg><g id="fpm-pl-{level_id[-1]}"/></svg>',
             "markers": [
                 {
-                    "placementId": f"pl-{level_id}",
+                    "placementId": f"pl-{level_id[-1]}",
                     "deviceId": "d1",
                     "name": "Freezer probe",
                     "category": "temperature_sensor",
@@ -96,7 +100,7 @@ async def test_entities_come_from_the_local_registry(hass: HomeAssistant) -> Non
     entry = MockConfigEntry(domain=DOMAIN)
     entry.add_to_hass(hass)
     temp = placed_device(hass, entry)
-    card = level("L0")
+    card = level(L0)
     assert entities_for(hass, card.markers[0]) == [temp]
     assert entities_for(hass, card.markers[1]) == []
 
@@ -114,19 +118,19 @@ async def test_cache_token_and_first_level(hass: HomeAssistant) -> None:
     token = await cards.async_token()
     assert token == await cards.async_token()
     assert cards.token_matches(token) and not cards.token_matches("x" * len(token))
-    assert [c.level.id for c in await cards.async_all_levels()] == ["L0", "L1"]
+    assert [c.level.id for c in await cards.async_all_levels()] == [L0, L1]
 
 
 async def test_revision_change_clears_the_cache(hass: HomeAssistant) -> None:
     """FR-34: a newer plan revision drops every cached level."""
     client = cloud()
     cards = FloorPlanCards(hass, client, "p1", FloorPlanStore(hass, "e2"), None)
-    await cards.async_level("L0")
-    await cards.async_level("L1")
-    cards._cache["L0"] = (0.0, cards._cache["L0"][1])
+    await cards.async_level(L0)
+    await cards.async_level(L1)
+    cards._cache[L0] = (0.0, cards._cache[L0][1])
     client.get_floor_plan_level_card.side_effect = lambda _p, lid, **_: level(lid, 4)
-    assert (await cards.async_level("L0")).revision == 4
-    assert "L1" not in cards._cache
+    assert (await cards.async_level(L0)).revision == 4
+    assert L1 not in cards._cache
 
 
 async def test_plan_without_levels(hass: HomeAssistant) -> None:
@@ -146,9 +150,9 @@ async def test_dashboard_views(hass: HomeAssistant) -> None:
     cards = FloorPlanCards(hass, cloud(), "p1", FloorPlanStore(hass, "e4"), None)
     token = await cards.async_token()
     pe = await async_dashboard(hass, cards, "picture_elements", None)
-    assert [v["title"] for v in pe["views"]] == ["Level L0", "Level L1"]
+    assert [v["title"] for v in pe["views"]] == ["Level 0", "Level 1"]
     card = pe["views"][0]["cards"][0]
-    assert card["image"] == svg_url(token, "L0")
+    assert card["image"] == svg_url(token, L0)
     assert card["elements"] == [
         {
             "type": "state-icon",
@@ -157,13 +161,13 @@ async def test_dashboard_views(hass: HomeAssistant) -> None:
             "style": {"left": "25.5%", "top": "40.0%"},
         }
     ]
-    fp = await async_dashboard(hass, cards, "ha_floorplan", "L1")
+    fp = await async_dashboard(hass, cards, "ha_floorplan", L1)
     rules = fp["views"][0]["cards"][0]["config"]["rules"]
     assert len(fp["views"]) == 1
     assert rules == [
         {
             "entity": temp,
-            "element": "fpm-pl-L1",
+            "element": "fpm-pl-1",
             "tap_action": "more-info",
             "hover_action": "hover-info",
         }
@@ -198,14 +202,14 @@ async def test_view_serves_the_svg_by_token(
     cards = plan_entry.runtime_data.floor_plan.cards
     token = await cards.async_token()
     web = await hass_client_no_auth()
-    resp = await web.get(svg_url(token, "L0"))
+    resp = await web.get(svg_url(token, L0))
     assert resp.status == 200
     assert resp.headers["Content-Type"].startswith("image/svg+xml")
-    assert "fpm-pl-L0" in await resp.text()
-    assert (await web.get(svg_url("wrong", "L0"))).status == 404
+    assert "fpm-pl-0" in await resp.text()
+    assert (await web.get(svg_url("wrong", L0))).status == 404
     mock = plan_entry.runtime_data.client.get_floor_plan_level_card
     mock.side_effect = IMatrixNotFoundError("404")
-    assert (await web.get(svg_url(token, "L9"))).status == 404
+    assert (await web.get(svg_url(token, L9))).status == 404
 
 
 async def test_dashboard_action(
@@ -228,3 +232,67 @@ async def test_dashboard_action(
             blocking=True,
             return_response=True,
         )
+
+
+async def test_new_link_and_revision(hass: HomeAssistant) -> None:
+    """Review F1, F5: a new link replaces the token; a new revision clears the cache."""
+    client = cloud()
+    cards = FloorPlanCards(hass, client, "p1", FloorPlanStore(hass, "e5"), None)
+    old = await cards.async_token()
+    new = await cards.async_token(rotate=True)
+    assert old != new and not cards.token_matches(old) and cards.token_matches(new)
+    await cards.async_level(L0)
+    cards.note_revision(3)
+    assert L0 in cards._cache
+    cards.note_revision(4)
+    assert cards._cache == {}
+    with pytest.raises(LookupError):
+        await cards.async_level("../../p2/levels/x")
+
+
+async def test_several_buildings_name_their_views(hass: HomeAssistant) -> None:
+    """Review F3, F4: levels of every building, titles carry the building name."""
+    two = level(L0)
+    refs = [
+        {
+            "id": L0,
+            "name": "Ground",
+            "ordinal": 0,
+            "buildingId": "b1",
+            "buildingName": "House",
+        },
+        {
+            "id": L1,
+            "name": "Ground",
+            "ordinal": 0,
+            "buildingId": "b2",
+            "buildingName": "Garage",
+        },
+    ]
+
+    def card(_plan: str, level_id: str, **_: Any) -> FloorPlanLevelCard:
+        ref = next(r for r in refs if r["id"] == level_id)
+        return FloorPlanLevelCard.from_dict(
+            {"revision": 3, "level": ref, "levels": refs, "svg": two.svg, "markers": []}
+        )
+
+    client = cloud()
+    client.get_floor_plan_level_card = AsyncMock(side_effect=card)
+    cards = FloorPlanCards(hass, client, "p1", FloorPlanStore(hass, "e6"), None)
+    cards._first_level = L0
+    views = (await async_dashboard(hass, cards, "picture_elements", L0))["views"]
+    assert views[0]["title"] == "House Ground"
+    every = (await async_dashboard(hass, cards, "picture_elements", None))["views"]
+    assert [v["title"] for v in every] == ["House Ground", "Garage Ground"]
+    assert len({v["path"] for v in every}) == 2
+
+
+async def test_view_refuses_a_non_uuid_level(
+    hass: HomeAssistant, plan_entry: MockConfigEntry, hass_client_no_auth: Any
+) -> None:
+    """Review F2: the view only accepts level ids; the SVG carries a strict CSP."""
+    token = await plan_entry.runtime_data.floor_plan.cards.async_token()
+    web = await hass_client_no_auth()
+    assert (await web.get(svg_url(token, "x"))).status == 404
+    resp = await web.get(svg_url(token, L0))
+    assert resp.headers["Content-Security-Policy"].startswith("default-src 'none'")

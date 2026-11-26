@@ -395,7 +395,7 @@
     },
     "floor_plan_dashboard": {
       "name": "Floor plan dashboard",
-      "description": "Returns a dashboard view per floor plan level for you to paste into a dashboard.",
+      "description": "Returns a dashboard view per floor plan level for you to paste into a dashboard. The image links hold a secret: anyone with a link can see that level of the plan, so share dashboards with care.",
       "fields": {
         "config_entry_id": {
           "name": "iMatrix entry",
@@ -408,6 +408,10 @@
         "level_id": {
           "name": "Level",
           "description": "One level id. Leave empty for every level."
+        },
+        "new_link": {
+          "name": "New image link",
+          "description": "Make a new secret image link. Dashboards pasted before stop showing the plan until you paste the new config."
         }
       }
     }

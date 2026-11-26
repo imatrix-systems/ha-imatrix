@@ -19,6 +19,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.service import async_register_admin_service
 from pyimatrix import Faults, History, IMatrixError, LatLng, Trip
 
 from .const import DOMAIN
@@ -38,14 +39,19 @@ DEVICE_SCHEMA = vol.Schema({vol.Required(ATTR_DEVICE_ID): cv.string})
 TRIPS_SCHEMA = DEVICE_SCHEMA.extend(
     {vol.Optional(ATTR_START): cv.datetime, vol.Optional(ATTR_END): cv.datetime}
 )
+UUID_RE = (
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_CARD = "card"
 ATTR_LEVEL_ID = "level_id"
+ATTR_NEW_LINK = "new_link"
 DASHBOARD_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
         vol.Required(ATTR_CARD): vol.In([CARD_PICTURE_ELEMENTS, CARD_HA_FLOORPLAN]),
-        vol.Optional(ATTR_LEVEL_ID): cv.string,
+        vol.Optional(ATTR_LEVEL_ID): vol.All(cv.string, vol.Match(UUID_RE)),
+        vol.Optional(ATTR_NEW_LINK, default=False): cv.boolean,
     }
 )
 HISTORY_SCHEMA = vol.Schema(
@@ -230,15 +236,27 @@ def async_setup_services(hass: HomeAssistant) -> None:
             )
         try:
             return await async_dashboard(
-                hass, manager.cards, call.data[ATTR_CARD], call.data.get(ATTR_LEVEL_ID)
+                hass,
+                manager.cards,
+                call.data[ATTR_CARD],
+                call.data.get(ATTR_LEVEL_ID),
+                new_link=call.data[ATTR_NEW_LINK],
             )
         except (IMatrixError, LookupError) as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN, translation_key="api_error"
             ) from err
 
+    # Admin only: the answer holds the secret image link (FR-34).
+    async_register_admin_service(
+        hass,
+        DOMAIN,
+        "floor_plan_dashboard",
+        floor_plan_dashboard,
+        DASHBOARD_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
     for name, handler, schema in (
-        ("floor_plan_dashboard", floor_plan_dashboard, DASHBOARD_SCHEMA),
         ("get_faults", get_faults, DEVICE_SCHEMA),
         ("get_trips", get_trips, TRIPS_SCHEMA),
         ("get_history", get_history, HISTORY_SCHEMA),

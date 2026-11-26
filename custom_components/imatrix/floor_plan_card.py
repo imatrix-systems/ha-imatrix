@@ -8,10 +8,11 @@ Entities come from the local registries: nothing about HA entities goes to the c
 
 from __future__ import annotations
 
+import asyncio
 import hmac
-import re
 import secrets
 import time
+import uuid
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 
 CARD_TTL_SECONDS = 300
 SVG_URL = "/api/imatrix/floor_plan/{token}/{level_id}.svg"
+SVG_CSP = "default-src 'none'; style-src 'unsafe-inline'"
 CARD_PICTURE_ELEMENTS = "picture_elements"
 CARD_HA_FLOORPLAN = "ha_floorplan"
 
@@ -84,15 +86,29 @@ class FloorPlanCards:
         self.instance_id = instance_id
         self._cache: dict[str, tuple[float, FloorPlanLevelCard]] = {}
         self._first_level: str | None = None
+        self._revision: int | None = None
+        self._token_lock = asyncio.Lock()
 
-    async def async_token(self) -> str:
-        """Return the secret path part of the SVG URLs, creating it once per entry."""
-        token = self.store.data.get("card_token")
-        if not token:
-            token = secrets.token_urlsafe(24)
-            self.store.data["card_token"] = token
-            await self.store.async_save()
-        return str(token)
+    def note_revision(self, revision: int) -> None:
+        """Drop every cached level when the plan revision changes (FR-34)."""
+        if self._revision is not None and revision != self._revision:
+            self._cache.clear()
+            self._first_level = None
+        self._revision = revision
+
+    async def async_token(self, *, rotate: bool = False) -> str:
+        """Return the secret path part of the SVG URLs.
+
+        It is made once per entry. ``rotate`` replaces it, which breaks every image
+        URL handed out before (review F1).
+        """
+        async with self._token_lock:
+            token = self.store.data.get("card_token")
+            if not token or rotate:
+                token = secrets.token_urlsafe(24)
+                self.store.data["card_token"] = token
+                await self.store.async_save()
+            return str(token)
 
     def token_matches(self, token: str) -> bool:
         """Compare a URL token with this entry's in constant time."""
@@ -113,19 +129,20 @@ class FloorPlanCards:
     async def async_level(self, level_id: str | None = None) -> FloorPlanLevelCard:
         """Return one level, from the cache when it is under 5 minutes old."""
         level_id = level_id or await self._async_first_level()
+        if not is_uuid(level_id):
+            raise LookupError("not a level id")
         cached = self._cache.get(level_id)
         if cached and time.monotonic() - cached[0] < CARD_TTL_SECONDS:
             return cached[1]
         card: FloorPlanLevelCard = await self.client.get_floor_plan_level_card(
             self.plan_id, level_id, instance_id=self.instance_id
         )
-        if cached and cached[1].revision != card.revision:
-            self._cache.clear()
+        self.note_revision(card.revision)
         self._cache[level_id] = (time.monotonic(), card)
         return card
 
     async def async_all_levels(self) -> list[FloorPlanLevelCard]:
-        """Return every level of the plan's building, by ordinal."""
+        """Return every level of the plan, by building and ordinal."""
         first = await self.async_level()
         out = []
         for ref in first.levels:
@@ -135,15 +152,28 @@ class FloorPlanCards:
         return out
 
 
-def _slug(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "level"
+def is_uuid(value: str) -> bool:
+    """Return whether a value is a UUID, the only form FPM level ids take."""
+    try:
+        uuid.UUID(value)
+    except ValueError, TypeError, AttributeError:
+        return False
+    return len(value) == 36
 
 
 async def async_dashboard(
-    hass: HomeAssistant, cards: FloorPlanCards, card_type: str, level_id: str | None
+    hass: HomeAssistant,
+    cards: FloorPlanCards,
+    card_type: str,
+    level_id: str | None,
+    *,
+    new_link: bool = False,
 ) -> dict[str, Any]:
     """Build the FR-35 dashboard views, one per level."""
-    token = await cards.async_token()
+    token = await cards.async_token(rotate=new_link)
+    several_buildings = (
+        len({lv.building_id for lv in (await cards.async_level()).levels}) > 1
+    )
     levels = (
         [await cards.async_level(level_id)]
         if level_id
@@ -185,10 +215,14 @@ async def async_dashboard(
                     ],
                 },
             }
+        title = level.level.name
+        if several_buildings and level.level.building_name:
+            title = f"{level.level.building_name} {title}"
         views.append(
             {
-                "title": level.level.name,
-                "path": f"imatrix-{_slug(level.level.name)}",
+                "title": title,
+                # Level ids are unique; names repeat across buildings (review F4).
+                "path": f"imatrix-{level.level.id}",
                 "type": "panel",
                 "cards": [card],
             }
@@ -226,6 +260,8 @@ class FloorPlanSvgView(HomeAssistantView):
         self, _request: web.Request, token: str, level_id: str
     ) -> web.Response:
         """Return the SVG of one level, or 404."""
+        if not is_uuid(level_id):
+            return web.Response(status=HTTPStatus.NOT_FOUND)
         for cards in _cards_of(self.hass):
             if not cards.token_matches(token):
                 continue
@@ -238,6 +274,7 @@ class FloorPlanSvgView(HomeAssistantView):
                 content_type="image/svg+xml",
                 headers={
                     "Cache-Control": f"private, max-age={CARD_TTL_SECONDS}",
+                    "Content-Security-Policy": SVG_CSP,
                     "X-Content-Type-Options": "nosniff",
                 },
             )
