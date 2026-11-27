@@ -338,7 +338,7 @@
           "offer_new_areas": "Offer new Home Assistant areas to the plan"
         },
         "data_description": {
-          "group_ids": "Import only devices in these iMatrix groups and their subgroups. Leave empty for all devices.",
+          "group_ids": "Import only devices in these iMatrix groups and their subgroups. Leave empty for all devices. The list shows the groups of the devices loaded so far, so it is empty when no device has loaded.",
           "scan_interval": "How often to ask the iMatrix cloud for new readings, in seconds.",
           "include_unmapped": "Also create entities for channels iMatrix has no unit or meaning for. They start disabled.",
           "push": "Keep a live connection to the iMatrix cloud so readings, positions and events arrive within seconds. When off, or when the server has no live stream, the integration polls.",

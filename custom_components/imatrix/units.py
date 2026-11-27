@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import (
-    CONCENTRATION_PARTS_PER_MILLION as PPM,
-)
-from homeassistant.const import (
     DEGREE,
     PERCENTAGE,
     REVOLUTIONS_PER_MINUTE,
@@ -22,6 +19,9 @@ from homeassistant.const import (
     UnitOfVolume,
 )
 from pyimatrix import Channel
+
+# HA 2026.11 deprecates CONCENTRATION_PARTS_PER_MILLION. UnitOfRatio is not in 2026.9.
+PPM = "ppm"
 
 # quantityKind -> (device class, HA unit). None unit means "take it from the channel".
 QUANTITY: dict[str, tuple[SensorDeviceClass | None, str | None]] = {
