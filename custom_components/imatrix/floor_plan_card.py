@@ -29,6 +29,7 @@ from homeassistant.components.websocket_api.decorators import (
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.http import HomeAssistantView
+from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN
 from .floor_plan import _device_for
@@ -149,6 +150,11 @@ class FloorPlanCards:
         self.note_revision(card.revision)
         self._cache[level_id] = (time.monotonic(), card)
         return card
+
+    def knows(self, level_id: str) -> bool:
+        """Return whether a cached level lists this level id (or nothing is cached)."""
+        listed = {lv.id for _t, card in self._cache.values() for lv in card.levels}
+        return not listed or level_id in listed
 
     async def async_all_levels(self) -> list[FloorPlanLevelCard]:
         """Return every level of the plan, by building and ordinal."""
@@ -352,13 +358,17 @@ async def ws_floor_plan_level(
         )
         return
     level_id = msg.get("level_id")
-    if level_id is not None and not is_uuid(level_id):
+    cards = found[0][1]
+    # Any signed-in HA user may read the plan: they already see every state. Only
+    # level ids the plan lists reach the cloud, so the command cannot be used to
+    # send unbounded cloud requests (review F5).
+    if level_id is not None and (not is_uuid(level_id) or not cards.knows(level_id)):
         connection.send_error(
             msg["id"], "invalid_format", "level_id is not a level id."
         )
         return
     try:
-        card = await found[0][1].async_level(level_id)
+        card = await cards.async_level(level_id)
     except Exception:
         connection.send_error(
             msg["id"], "unavailable", "The floor plan could not be loaded."
@@ -381,4 +391,6 @@ async def async_register_card(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_floor_plan_level)
     # The frontend loads before us when it is present (after_dependencies).
     if frontend.DATA_EXTRA_MODULE_URL in hass.data:
-        frontend.add_extra_js_url(hass, CARD_JS_URL)
+        # Versioned URL so browsers drop a cached card after an upgrade (review F8).
+        version = (await async_get_integration(hass, DOMAIN)).version
+        frontend.add_extra_js_url(hass, f"{CARD_JS_URL}?v={version}")

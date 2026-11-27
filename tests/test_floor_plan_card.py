@@ -325,6 +325,9 @@ async def test_card_websocket_and_script(
         IMatrixNotFoundError("404")
     )
     await ws.send_json({"id": 4, "type": "imatrix/floor_plan/level", "level_id": L9})
+    assert (await ws.receive_json())["error"]["code"] == "invalid_format"
+    plan_entry.runtime_data.floor_plan.cards._cache.clear()
+    await ws.send_json({"id": 5, "type": "imatrix/floor_plan/level", "level_id": L9})
     assert (await ws.receive_json())["error"]["code"] == "unavailable"
     web = await hass_client()
     resp = await web.get("/imatrix_static/imatrix-floor-plan-card.js")

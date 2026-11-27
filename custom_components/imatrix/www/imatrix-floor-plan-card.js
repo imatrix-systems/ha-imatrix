@@ -9,22 +9,48 @@
 const ON_STATES = new Set(["on", "open", "detected", "home", "unlocked", "problem"]);
 const STALE_STATES = new Set(["unavailable", "unknown"]);
 
-/** Parse the cloud's SVG and drop anything that could run code, before it enters the page. */
+const SVG_NS = "http://www.w3.org/2000/svg";
+const RETRY_MS = 30000;
+const REFRESH_MS = 300000;
+// Allowlists (review F1 to F4): only what the iMatrix plan renderer emits survives.
+const ELEMENTS = new Set([
+  "svg", "g", "path", "polygon", "polyline", "line", "rect", "circle", "ellipse", "text", "tspan",
+  "title", "defs", "clippath", "pattern", "marker", "style", "image", "lineargradient", "stop",
+]);
+const ATTRIBUTES = new Set([
+  "id", "class", "d", "points", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "width", "height",
+  "viewbox", "transform", "fill", "fill-opacity", "fill-rule", "stroke", "stroke-width", "stroke-dasharray",
+  "stroke-linecap", "stroke-linejoin", "stroke-opacity", "opacity", "clip-path", "clippathunits", "marker-end",
+  "marker-start", "markerwidth", "markerheight", "refx", "refy", "orient", "markerunits", "patternunits",
+  "patterntransform", "text-anchor", "dominant-baseline", "font-size", "font-weight", "font-family",
+  "preserveaspectratio", "offset", "stop-color", "href", "style", "role", "tabindex", "aria-label", "xmlns",
+]);
+const cleanUrl = (v) => !/url\(\s*(?!['"]?#)/i.test(v) && !/@import|expression\(|javascript:/i.test(v);
+
+/** Parse the cloud's SVG and keep only allowlisted SVG elements and attributes, before it enters the page. */
 function safeSvg(text) {
   const doc = new DOMParser().parseFromString(text, "image/svg+xml");
   const svg = doc.documentElement;
-  if (!svg || svg.nodeName.toLowerCase() !== "svg") return null;
-  svg.querySelectorAll("script, foreignObject, iframe, object, embed").forEach((n) => n.remove());
-  svg.querySelectorAll("*").forEach((n) => {
+  if (!svg || svg.namespaceURI !== SVG_NS || svg.localName !== "svg") return null;
+  [svg, ...svg.querySelectorAll("*")].forEach((n) => {
+    if (n !== svg && (n.namespaceURI !== SVG_NS || !ELEMENTS.has(n.localName.toLowerCase()))) { n.remove(); return; }
+    if (n.localName === "style" && !cleanUrl(n.textContent || "")) { n.remove(); return; }
     [...n.attributes].forEach((a) => {
-      const name = a.name.toLowerCase();
-      const value = a.value.trim().toLowerCase();
-      if (name.startsWith("on")) n.removeAttribute(a.name);
-      if ((name === "href" || name === "xlink:href") && !value.startsWith("#") && !value.startsWith("data:image/")) {
-        n.removeAttribute(a.name);
-      }
+      const name = a.localName.toLowerCase();
+      const value = a.value.trim();
+      const isHref = name === "href";
+      const ok = ATTRIBUTES.has(name) || name.startsWith("data-")
+        ? (isHref ? value.startsWith("#") || (n.localName === "image" && /^data:image\/(png|jpeg|webp);/i.test(value)) : cleanUrl(value))
+        : false;
+      if (!ok) n.removeAttributeNode(a);
     });
   });
+  // Keep the aspect ratio when only width and height are given (review F9).
+  if (!svg.getAttribute("viewBox")) {
+    const w = parseFloat(svg.getAttribute("width"));
+    const h = parseFloat(svg.getAttribute("height"));
+    if (w > 0 && h > 0) svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  }
   svg.removeAttribute("width");
   svg.removeAttribute("height");
   svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
@@ -34,19 +60,30 @@ function safeSvg(text) {
 class IMatrixFloorPlanCard extends HTMLElement {
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("Invalid configuration");
+    this._seq = (this._seq || 0) + 1;
+    this._loading = false;
+    this._loadedAt = 0;
     this._config = { show_names: false, ...config };
     this._levelId = config.level_id || null;
     this._data = null;
     this._error = null;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this._render();
+    if (this._hass) this._load();
   }
 
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
-    if (first || (!this._data && !this._loading && !this._error)) this._load();
+    const now = Date.now();
+    // Retry after an error and refresh a stale plan (review F6, F10).
+    const due = this._error ? now - this._loadedAt > RETRY_MS : this._data && now - this._loadedAt > REFRESH_MS;
+    if (first || (!this._data && !this._loading && !this._error) || (due && !this._loading)) this._load();
     else this._updateBadges();
+  }
+
+  disconnectedCallback() {
+    this._seq = (this._seq || 0) + 1;
   }
 
   getCardSize() {
@@ -59,20 +96,30 @@ class IMatrixFloorPlanCard extends HTMLElement {
 
   async _load(levelId) {
     if (!this._hass) return;
+    // A newer request wins (review F7).
+    this._seq = (this._seq || 0) + 1;
+    const seq = this._seq;
     this._loading = true;
     try {
       const msg = { type: "imatrix/floor_plan/level" };
       if (this._config.config_entry_id) msg.config_entry_id = this._config.config_entry_id;
       const want = levelId || this._levelId;
       if (want) msg.level_id = want;
-      this._data = await this._hass.callWS(msg);
-      this._levelId = this._data.level.id;
+      const data = await this._hass.callWS(msg);
+      if (seq !== this._seq) return;
+      this._data = data;
+      this._levelId = data.level.id;
       this._error = null;
     } catch (err) {
+      if (seq !== this._seq) return;
+      // Keep the plan on screen when only a level switch failed.
       this._error = (err && err.message) || "The floor plan could not be loaded.";
     } finally {
-      this._loading = false;
-      this._render();
+      if (seq === this._seq) {
+        this._loading = false;
+        this._loadedAt = Date.now();
+        this._render();
+      }
     }
   }
 
@@ -133,7 +180,7 @@ class IMatrixFloorPlanCard extends HTMLElement {
       p.className = "message";
       p.textContent = this._error;
       card.appendChild(p);
-      return;
+      if (!this._data) return;
     }
     if (!this._data) {
       const p = document.createElement("div");
