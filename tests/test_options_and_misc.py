@@ -5,6 +5,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
 from pyimatrix import IMatrixConnectionError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -186,3 +187,26 @@ async def test_options_floor_plan_and_sharing(
     )
     await hass.async_block_till_done()
     assert init_integration.options["share_devices"] is False
+
+
+async def test_remove_entry_deletes_its_repairs(
+    hass: HomeAssistant, init_integration: MockConfigEntry
+) -> None:
+    """A deleted hub takes its repairs with it, and leaves other entries' alone."""
+    for issue_id in (f"no_devices_{init_integration.entry_id}", "no_devices_other"):
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="no_devices",
+        )
+    await hass.config_entries.async_remove(init_integration.entry_id)
+    await hass.async_block_till_done()
+    issues = ir.async_get(hass)
+    assert (
+        issues.async_get_issue(DOMAIN, f"no_devices_{init_integration.entry_id}")
+        is None
+    )
+    assert issues.async_get_issue(DOMAIN, "no_devices_other") is not None

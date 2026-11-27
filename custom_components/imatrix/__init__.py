@@ -185,8 +185,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) ->
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> None:
-    """Withdraw a shared device list, then revoke the OAuth2 grant. Never raises."""
+    """Withdraw shared devices, drop the entry's repairs, revoke the OAuth2 grant."""
     await _async_withdraw_shared_devices(hass, entry)
+    _delete_entry_issues(hass, entry)
     if entry.data.get(CONF_AUTH_TYPE) != AUTH_TYPE_OAUTH2:
         return
     token = entry.data.get("token", {}).get("refresh_token")
@@ -235,6 +236,13 @@ async def async_remove_config_entry_device(
         (DOMAIN, str(sn)) in device_entry.identifiers
         for sn in entry.runtime_data.coordinator.data.devices
     )
+
+
+def _delete_entry_issues(hass: HomeAssistant, entry: IMatrixConfigEntry) -> None:
+    """Every repair of this integration ends with the entry id it belongs to."""
+    for domain, issue_id in list(ir.async_get(hass).issues):
+        if domain == DOMAIN and issue_id.endswith(f"_{entry.entry_id}"):
+            ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
 def _check_key_expiry(

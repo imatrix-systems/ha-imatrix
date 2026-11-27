@@ -430,8 +430,8 @@
       "description": "{title} has been rate limited by the iMatrix cloud for more than 30 minutes. Raise the polling interval in the integration options, or select fewer groups."
     },
     "no_devices": {
-      "title": "iMatrix API key sees no devices",
-      "description": "The API key for {title} cannot see any devices. An iMatrix API key sees only the devices in groups granted to the key's user, even when the user is an organization administrator. Grant the user access to the groups in iMatrix, then check the groups selected in the integration options."
+      "title": "iMatrix sees no devices",
+      "description": "The iMatrix sign-in for {title} cannot see any devices. Check in iMatrix that this organization has devices and that your user can see them, then check the groups selected in the integration options. Devices appear on the next poll."
     },
     "stream_unavailable": {
       "title": "iMatrix live updates unavailable",
