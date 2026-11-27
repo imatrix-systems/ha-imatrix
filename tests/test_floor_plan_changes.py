@@ -190,3 +190,52 @@ async def test_reauth_asks_for_the_write_scope(hass: HomeAssistant) -> None:
     flow.hass = hass
     flow.context = {"source": SOURCE_REAUTH, "entry_id": entry.entry_id}
     assert OAUTH2_SCOPE_FLOOR_PLAN_WRITE in flow.extra_authorize_data["scope"]
+
+
+async def test_review_fixes(hass: HomeAssistant) -> None:
+    """Review F1, F2, F4, F7 of the two-way sync."""
+    # F2: an unmanaged "Kitchen" makes ours "Kitchen (G)"; a rename sends no suffix.
+    ar.async_get(hass).async_create("Kitchen")
+    manager = await started(hass, OWNERSHIP_HA_NAMES)
+    tracker = manager.tracker
+    ours = next(
+        a
+        for a in ar.async_get(hass).async_list_areas()
+        if a.name.startswith("Kitchen ")
+    )
+    suffix = ours.name[len("Kitchen") :]
+    assert suffix.strip()
+    ar.async_get(hass).async_update(ours.id, name=f"Cook room{suffix}")
+    await hass.async_block_till_done()
+    tracker.classify()
+    assert tracker.pending[("rename", space_of("Kitchen"))]["name"] == "Cook room"
+    tracker.pending.clear()
+    # F1: a device put in its planned area, or in no area, has not moved.
+    assignment = desired().device_assignments[0]
+    value = assignment["match_by"][0].partition("=")[2]
+    zha = MockConfigEntry(domain="zha")
+    zha.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=zha.entry_id, connections={(dr.CONNECTION_ZIGBEE, value)}
+    )
+    planned = ar.async_get(hass).async_get_area_by_name(assignment["area"])
+    dr.async_get(hass).async_update_device(device.id, area_id=planned.id)
+    dr.async_get(hass).async_update_device(device.id, area_id=None)
+    await hass.async_block_till_done()
+    tracker.classify()
+    assert tracker.pending == {}
+    # F7: two levels sharing one HA floor name no level.
+    floors = manager.store.data["floors"]
+    first = next(iter(floors))
+    floors["00000000-0000-4000-8000-00000000abcd"] = floors[first]
+    assert tracker._floor_fpm(floors[first]) is None
+    del floors["00000000-0000-4000-8000-00000000abcd"]
+    # F4: a failed send keeps the changes and schedules a retry.
+    manager.client.post_floor_plan_ha_changes.side_effect = RuntimeError("down")
+    tracker.pending[("rename", "x")] = {"kind": "rename", "fpmId": "x", "name": "y"}
+    await tracker._flush()
+    assert ("rename", "x") in tracker.pending
+    manager.client.post_floor_plan_ha_changes.side_effect = None
+    await tracker._flush()
+    assert tracker.pending == {}
+    manager.async_stop()

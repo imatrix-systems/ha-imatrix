@@ -76,6 +76,8 @@ class FloorPlanSync:
     links: dict[str, dict[str, str]] = field(
         default_factory=lambda: {"floors": {}, "areas": {}, "labels": {}}
     )
+    # The HA name each desired area gets, after disambiguation (FR-25).
+    names: dict[str, str] = field(default_factory=dict)
 
 
 class FloorPlanStore:
@@ -391,7 +393,7 @@ def build_sync(
                 "area_name": names.get(key),
             }
             actions.append(Action("assign", "device", device.id, data))
-    return FloorPlanSync(desired.revision, actions, unmatched, links)
+    return FloorPlanSync(desired.revision, actions, unmatched, links, names)
 
 
 def _run_floor(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> None:
@@ -409,7 +411,6 @@ def _run_floor(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> No
             str(action.existing_id), name=data["name"], **kwargs
         )
     store.data["floors"][action.key] = floor.floor_id
-    store.data.setdefault("names", {})[floor.floor_id] = floor.name
 
 
 def _run_area(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> None:
@@ -437,7 +438,6 @@ def _run_area(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> Non
             labels=set(current.labels) | labels,
         )
     store.data["areas"][action.key] = area.id
-    store.data.setdefault("names", {})[area.id] = area.name
 
 
 def _run_action(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> None:
@@ -548,6 +548,7 @@ class FloorPlanManager:
         self.instance_id: str | None = None
         self.cards: Any = None
         self.desired: Any = None
+        self.expected_names: dict[str, str] = {}
         self.capabilities: dict[str, bool] = {}
         self.ownership = ownership
         self.offer_new_areas = offer_new_areas
@@ -644,6 +645,7 @@ class FloorPlanManager:
             return
         self.desired = desired
         self.pending = build_sync(self.hass, desired, self.store)
+        self.expected_names = dict(self.pending.names)
         async_publish_issue(
             self.hass, self.entry.entry_id, self.entry.title, self.pending
         )
@@ -723,10 +725,13 @@ class FloorPlanManager:
             translation_placeholders={"title": self.entry.title},
         )
 
-    async def async_send_changes(self, changes: list[dict[str, Any]]) -> None:
-        """FR-43: send what changed in HA, then recheck the plan."""
+    async def async_send_changes(self, changes: list[dict[str, Any]]) -> bool:
+        """FR-43: send what changed in HA, then recheck the plan.
+
+        Returns False when the report should be tried again (review F4).
+        """
         if self._stopped or not self.plan_id or self.desired is None:
-            return
+            return True
         try:
             await self.client.post_floor_plan_ha_changes(
                 self.plan_id,
@@ -737,11 +742,12 @@ class FloorPlanManager:
             )
         except IMatrixPermissionError:
             self._async_permission_refused("floor_plan_write_key")
-            return
+            return True
         except Exception as err:
-            _LOGGER.debug("floor plan changes not sent: %s", err)
-            return
+            _LOGGER.debug("floor plan changes not sent, will retry: %s", err)
+            return False
         await self.async_check()
+        return True
 
     async def async_withdraw_devices(self) -> bool:
         """Delete the shared list in the cloud (FR-29)."""

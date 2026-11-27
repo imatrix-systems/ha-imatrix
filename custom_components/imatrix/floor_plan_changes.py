@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 DEBOUNCE = timedelta(seconds=10)
+RETRY = timedelta(seconds=60)
 
 
 def _fields(cls: Any) -> set[str]:
@@ -121,10 +122,9 @@ class HaChangeTracker:
         return next((a for a in desired.areas if area_key(a) == key), None)
 
     def _floor_fpm(self, floor_id: str | None) -> str | None:
-        for fpm_id, ha_id in self._store["floors"].items():
-            if ha_id == floor_id:
-                return str(fpm_id)
-        return None
+        """Return the one level behind an HA floor; none when several share it (F7)."""
+        found = [f for f, ha in self._store["floors"].items() if ha == floor_id]
+        return str(found[0]) if len(found) == 1 else None
 
     def _area_key(self, area_id: str | None) -> str | None:
         for key, ha_id in self._store["areas"].items():
@@ -138,8 +138,20 @@ class HaChangeTracker:
         ids = list(area.get("fpm_ids") or ()) if area else []
         return str(ids[0]) if len(ids) == 1 else None
 
-    def _known_name(self, ha_id: str, desired_name: str) -> str:
-        return str(self._store.get("names", {}).get(ha_id, desired_name))
+    def _expected_area_name(self, key: str, desired_name: str) -> str:
+        return self.manager.expected_names.get(key, desired_name)
+
+    @staticmethod
+    def _plan_name(ha_name: str, expected: str, desired: str) -> str:
+        """Drop the disambiguation suffix the integration added (review F2).
+
+        "Bathroom (F1)" renamed to "Bath (F1)" sends "Bath".
+        """
+        if expected != desired and expected.startswith(desired):
+            suffix = expected[len(desired) :]
+            if ha_name.endswith(suffix) and len(ha_name) > len(suffix):
+                return ha_name[: -len(suffix)].rstrip()
+        return ha_name
 
     # ---------------------------------------------------------------- events
 
@@ -190,7 +202,7 @@ class HaChangeTracker:
         desired = self._desired_floor(fpm_id)
         if floor is None or desired is None:
             return
-        if floor.name != self._known_name(floor.floor_id, desired["name"]):
+        if floor.name != desired["name"]:
             self._queue("rename", fpm_id, {"fpmId": fpm_id, "name": floor.name})
 
     def _area_change(self, data: dict[str, Any]) -> None:
@@ -214,8 +226,11 @@ class HaChangeTracker:
         desired = self._desired_area(key)
         if area is None or desired is None:
             return
-        if area.name != self._known_name(area.id, desired["name"]):
-            self._queue("rename", space, {"fpmId": space, "name": area.name[:255]})
+        expected = self._expected_area_name(key, desired["name"])
+        if area.name != expected:
+            name = self._plan_name(area.name, expected, desired["name"])
+            if name != desired["name"]:
+                self._queue("rename", space, {"fpmId": space, "name": name[:255]})
         wanted = self._store["floors"].get(desired.get("floor_fpm") or "")
         moved_to = self._floor_fpm(area.floor_id)
         if area.floor_id and area.floor_id != wanted and moved_to is not None:
@@ -230,10 +245,20 @@ class HaChangeTracker:
         desired = self.manager.desired
         if device is None or desired is None:
             return
+        # Moved out of a deleted area: not a move of the device (review F1).
+        if device.area_id is None:
+            return
+        area_key_by_name = {a["name"]: area_key(a) for a in desired.areas}
         for assignment in desired.device_assignments:
             found = _device_for(self.hass, list(assignment.get("match_by") or ()))
             if found is None or found.id != device.id:
                 continue
+            # Our own sync put it in its planned area: not a move either.
+            planned = self._store["areas"].get(
+                area_key_by_name.get(assignment.get("area") or "") or ""
+            )
+            if planned == device.area_id:
+                return
             fpm_id = str(assignment["device_fpm_id"])
             change: dict[str, Any] = {"fpmId": fpm_id}
             to_space = self._single_space(self._area_key(device.area_id))
@@ -249,5 +274,9 @@ class HaChangeTracker:
         self.classify()
         changes = list(self.pending.values())
         self.pending.clear()
-        if changes:
-            await self.manager.async_send_changes(changes)
+        if changes and not await self.manager.async_send_changes(changes):
+            # Not sent: keep them (newer changes for the same object win) and retry.
+            for change in changes:
+                key = change.get("fpmId") or change.get("haAreaName") or ""
+                self.pending.setdefault((change["kind"], key), change)
+            self._timer = async_call_later(self.hass, RETRY, self._flush)
