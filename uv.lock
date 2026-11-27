@@ -2416,7 +2416,7 @@ wheels = [
 [[package]]
 name = "pyimatrix"
 version = "0.1.0"
-source = { git = "https://github.com/imatrix-systems/pyimatrix?branch=main#8e19baf52ce730def18c2e5697105d1f2a2c6ad4" }
+source = { git = "https://github.com/imatrix-systems/pyimatrix?branch=main#76ba3b64522ea87e7b9762d2dbc3f31be14e8858" }
 dependencies = [
     { name = "aiohttp" },
 ]
