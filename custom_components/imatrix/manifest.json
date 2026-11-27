@@ -2,6 +2,7 @@
   "domain": "imatrix",
   "name": "iMatrix",
   "after_dependencies": [
+    "frontend",
     "recorder"
   ],
   "codeowners": [
@@ -10,7 +11,8 @@
   "config_flow": true,
   "dependencies": [
     "application_credentials",
-    "http"
+    "http",
+    "websocket_api"
   ],
   "documentation": "https://github.com/imatrix-systems/ha-imatrix",
   "integration_type": "hub",

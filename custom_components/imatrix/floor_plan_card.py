@@ -14,9 +14,18 @@ import secrets
 import time
 import uuid
 from http import HTTPStatus
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import probatio as vol
 from aiohttp import web
+from homeassistant.components import frontend, websocket_api
+from homeassistant.components.http.server import StaticPathConfig
+from homeassistant.components.websocket_api.connection import ActiveConnection
+from homeassistant.components.websocket_api.decorators import (
+    async_response,
+    websocket_command,
+)
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.http import HomeAssistantView
@@ -230,15 +239,19 @@ async def async_dashboard(
     return {"views": views}
 
 
-def _cards_of(hass: HomeAssistant) -> list[FloorPlanCards]:
+def _entries_with_cards(hass: HomeAssistant) -> list[tuple[Any, FloorPlanCards]]:
     out = []
     for entry in hass.config_entries.async_entries(DOMAIN):
         if entry.state is not ConfigEntryState.LOADED:
             continue
         manager = getattr(entry.runtime_data, "floor_plan", None)
         if manager is not None and manager.cards is not None:
-            out.append(manager.cards)
+            out.append((entry, manager.cards))
     return out
+
+
+def _cards_of(hass: HomeAssistant) -> list[FloorPlanCards]:
+    return [cards for _entry, cards in _entries_with_cards(hass)]
 
 
 class FloorPlanSvgView(HomeAssistantView):
@@ -279,3 +292,93 @@ class FloorPlanSvgView(HomeAssistantView):
                 },
             )
         return web.Response(status=HTTPStatus.NOT_FOUND)
+
+
+CARD_JS_URL = "/imatrix_static/imatrix-floor-plan-card.js"
+
+
+def card_payload(hass: HomeAssistant, card: FloorPlanLevelCard) -> dict[str, Any]:
+    """Return a level for the card (FR-40): FR-33's fields plus local entities."""
+
+    def ref(lv: Any) -> dict[str, Any]:
+        return {
+            "id": lv.id,
+            "name": lv.name,
+            "ordinal": lv.ordinal,
+            "buildingId": lv.building_id,
+            "buildingName": lv.building_name,
+        }
+
+    return {
+        "revision": card.revision,
+        "level": ref(card.level),
+        "levels": [ref(lv) for lv in card.levels],
+        "svg": card.svg,
+        "markers": [
+            {
+                "placementId": m.placement_id,
+                "name": m.name,
+                "category": m.category,
+                "x": m.x,
+                "y": m.y,
+                "entities": entities_for(hass, m),
+            }
+            for m in card.markers
+        ],
+    }
+
+
+@websocket_command(
+    {
+        vol.Required("type"): "imatrix/floor_plan/level",
+        vol.Optional("config_entry_id"): str,
+        vol.Optional("level_id"): str,
+    }
+)
+@async_response
+async def ws_floor_plan_level(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Answer the card with one level of the entry's plan (FR-40)."""
+    entry_id = msg.get("config_entry_id")
+    found = [
+        (entry, cards)
+        for entry, cards in _entries_with_cards(hass)
+        if entry_id is None or entry.entry_id == entry_id
+    ]
+    if not found:
+        connection.send_error(
+            msg["id"], "not_found", "No iMatrix entry with a floor plan was found."
+        )
+        return
+    level_id = msg.get("level_id")
+    if level_id is not None and not is_uuid(level_id):
+        connection.send_error(
+            msg["id"], "invalid_format", "level_id is not a level id."
+        )
+        return
+    try:
+        card = await found[0][1].async_level(level_id)
+    except Exception:
+        connection.send_error(
+            msg["id"], "unavailable", "The floor plan could not be loaded."
+        )
+        return
+    connection.send_result(msg["id"], card_payload(hass, card))
+
+
+async def async_register_card(hass: HomeAssistant) -> None:
+    """Serve the card script and load it on every dashboard (FR-39)."""
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                CARD_JS_URL,
+                str(Path(__file__).parent / "www" / "imatrix-floor-plan-card.js"),
+                True,
+            )
+        ]
+    )
+    websocket_api.async_register_command(hass, ws_floor_plan_level)
+    # The frontend loads before us when it is present (after_dependencies).
+    if frontend.DATA_EXTRA_MODULE_URL in hass.data:
+        frontend.add_extra_js_url(hass, CARD_JS_URL)

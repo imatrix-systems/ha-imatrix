@@ -296,3 +296,37 @@ async def test_view_refuses_a_non_uuid_level(
     assert (await web.get(svg_url(token, "x"))).status == 404
     resp = await web.get(svg_url(token, L0))
     assert resp.headers["Content-Security-Policy"].startswith("default-src 'none'")
+
+
+async def test_card_websocket_and_script(
+    hass: HomeAssistant,
+    plan_entry: MockConfigEntry,
+    hass_ws_client: Any,
+    hass_client: Any,
+) -> None:
+    """FR-39, FR-40: the card script is served; the command returns a level."""
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.add_to_hass(hass)
+    temp = placed_device(hass, entry)
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "imatrix/floor_plan/level", "level_id": L0})
+    msg = await ws.receive_json()
+    assert msg["success"], msg
+    assert msg["result"]["level"]["id"] == L0
+    assert msg["result"]["markers"][0]["entities"] == [temp]
+    assert msg["result"]["levels"][1]["id"] == L1
+    await ws.send_json({"id": 2, "type": "imatrix/floor_plan/level", "level_id": "x"})
+    assert (await ws.receive_json())["error"]["code"] == "invalid_format"
+    await ws.send_json(
+        {"id": 3, "type": "imatrix/floor_plan/level", "config_entry_id": "nope"}
+    )
+    assert (await ws.receive_json())["error"]["code"] == "not_found"
+    plan_entry.runtime_data.client.get_floor_plan_level_card.side_effect = (
+        IMatrixNotFoundError("404")
+    )
+    await ws.send_json({"id": 4, "type": "imatrix/floor_plan/level", "level_id": L9})
+    assert (await ws.receive_json())["error"]["code"] == "unavailable"
+    web = await hass_client()
+    resp = await web.get("/imatrix_static/imatrix-floor-plan-card.js")
+    assert resp.status == 200
+    assert "imatrix-floor-plan-card" in await resp.text()
