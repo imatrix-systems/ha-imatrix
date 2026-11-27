@@ -7,9 +7,18 @@ Status: beta (0.1.0). The design is iMatrix spec 817.
 
 ## Install
 
-The integration is not in the default HACS list yet. Add it as a custom repository:
+The integration is not in the default list yet. Add it from its GitHub link.
 
-1. In Home Assistant, open **HACS**, then the three-dot menu, then **Custom repositories**.
+On Home Assistant 2026.11 or later, use the Marketplace:
+
+1. Go to **Settings > Marketplace** and select **Add from link**.
+2. Enter `imatrix-systems/ha-imatrix` and select **Add**. The first time, connect a GitHub account
+   with the code it shows.
+3. Open **iMatrix** in the list and select **Install**.
+
+On earlier versions with HACS:
+
+1. Open **HACS**, then the three-dot menu, then **Custom repositories**.
 2. Enter `https://github.com/imatrix-systems/ha-imatrix`, choose the type **Integration**, and click **Add**.
 3. Find **iMatrix** in HACS, download it, and restart Home Assistant.
 
@@ -20,7 +29,8 @@ Home Assistant 2026.9.0 or later is required.
 Go to **Settings > Devices & services > Add integration** and pick **iMatrix**. Then choose one of:
 
 - **Sign in with iMatrix**. Your browser opens the iMatrix Cloud, where you pick one organization and
-  allow read-only access. Home Assistant refreshes the access token on its own. You can remove the
+  allow read-only access. The first time, my.home-assistant.io asks for your Home Assistant URL
+  (for example `http://192.168.1.10:8123`) so it can send you back. Home Assistant refreshes the access token on its own. You can remove the
   access later in iMatrix Cloud account settings.
 - **API key**. Create a key in iMatrix Cloud and paste it in. Home Assistant warns you 14 days before
   the key expires.
