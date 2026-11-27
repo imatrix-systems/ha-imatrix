@@ -9,7 +9,8 @@
   ],
   "config_flow": true,
   "dependencies": [
-    "application_credentials"
+    "application_credentials",
+    "http"
   ],
   "documentation": "https://github.com/imatrix-systems/ha-imatrix",
   "integration_type": "hub",

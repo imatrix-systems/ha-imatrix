@@ -1,4 +1,4 @@
-"""Actions that return iMatrix data (trips, faults, history)."""
+"""Actions that return iMatrix data (trips, faults, history, floor plan dashboards)."""
 
 from __future__ import annotations
 
@@ -19,9 +19,15 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.service import async_register_admin_service
 from pyimatrix import Faults, History, IMatrixError, LatLng, Trip
 
 from .const import DOMAIN
+from .floor_plan_card import (
+    CARD_HA_FLOORPLAN,
+    CARD_PICTURE_ELEMENTS,
+    async_dashboard,
+)
 
 if TYPE_CHECKING:
     from . import IMatrixConfigEntry
@@ -32,6 +38,21 @@ ATTR_END = "end"
 DEVICE_SCHEMA = vol.Schema({vol.Required(ATTR_DEVICE_ID): cv.string})
 TRIPS_SCHEMA = DEVICE_SCHEMA.extend(
     {vol.Optional(ATTR_START): cv.datetime, vol.Optional(ATTR_END): cv.datetime}
+)
+UUID_RE = (
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+ATTR_CONFIG_ENTRY_ID = "config_entry_id"
+ATTR_CARD = "card"
+ATTR_LEVEL_ID = "level_id"
+ATTR_NEW_LINK = "new_link"
+DASHBOARD_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_CARD): vol.In([CARD_PICTURE_ELEMENTS, CARD_HA_FLOORPLAN]),
+        vol.Optional(ATTR_LEVEL_ID): vol.All(cv.string, vol.Match(UUID_RE)),
+        vol.Optional(ATTR_NEW_LINK, default=False): cv.boolean,
+    }
 )
 HISTORY_SCHEMA = vol.Schema(
     {
@@ -198,6 +219,43 @@ def async_setup_services(hass: HomeAssistant) -> None:
             ) from err
         return _history_response(history, sensor_id)
 
+    async def floor_plan_dashboard(call: ServiceCall) -> ServiceResponse:
+        entry = hass.config_entries.async_get_entry(call.data[ATTR_CONFIG_ENTRY_ID])
+        if entry is None or entry.domain != DOMAIN:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="floor_plan_off"
+            )
+        if entry.state is not ConfigEntryState.LOADED:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="entry_not_loaded"
+            )
+        manager = entry.runtime_data.floor_plan
+        if manager is None or manager.cards is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="floor_plan_off"
+            )
+        try:
+            return await async_dashboard(
+                hass,
+                manager.cards,
+                call.data[ATTR_CARD],
+                call.data.get(ATTR_LEVEL_ID),
+                new_link=call.data[ATTR_NEW_LINK],
+            )
+        except (IMatrixError, LookupError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="api_error"
+            ) from err
+
+    # Admin only: the answer holds the secret image link (FR-34).
+    async_register_admin_service(
+        hass,
+        DOMAIN,
+        "floor_plan_dashboard",
+        floor_plan_dashboard,
+        DASHBOARD_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
     for name, handler, schema in (
         ("get_faults", get_faults, DEVICE_SCHEMA),
         ("get_trips", get_trips, TRIPS_SCHEMA),
