@@ -1195,7 +1195,7 @@ wheels = [
 
 [[package]]
 name = "ha-imatrix"
-version = "0.1.0"
+version = "0.1.1"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -2415,8 +2415,8 @@ wheels = [
 
 [[package]]
 name = "pyimatrix"
-version = "0.1.0"
-source = { git = "https://github.com/imatrix-systems/pyimatrix?branch=main#239dfefb9e6f000cf9403e46c62ae553bc38b0c5" }
+version = "0.1.1"
+source = { git = "https://github.com/imatrix-systems/pyimatrix?branch=main#e530d286219258416e67751de1231c77456843f4" }
 dependencies = [
     { name = "aiohttp" },
 ]
