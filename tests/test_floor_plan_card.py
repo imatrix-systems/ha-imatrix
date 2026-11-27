@@ -127,7 +127,7 @@ async def test_revision_change_clears_the_cache(hass: HomeAssistant) -> None:
     cards = FloorPlanCards(hass, client, "p1", FloorPlanStore(hass, "e2"), None)
     await cards.async_level(L0)
     await cards.async_level(L1)
-    cards._cache[L0] = (0.0, cards._cache[L0][1])
+    cards._cache[L0] = (-1e9, cards._cache[L0][1])
     client.get_floor_plan_level_card.side_effect = lambda _p, lid, **_: level(lid, 4)
     assert (await cards.async_level(L0)).revision == 4
     assert L1 not in cards._cache
