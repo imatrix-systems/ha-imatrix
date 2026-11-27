@@ -16,6 +16,12 @@ CONF_PUSH: Final = "push"
 # sharing.
 CONF_FLOOR_PLAN_ID: Final = "floor_plan_id"
 CONF_SHARE_DEVICES: Final = "share_devices"
+# Spec 822 FR-41 to FR-46: who owns names, and whether new HA areas are offered.
+CONF_OWNERSHIP: Final = "ownership"
+CONF_OFFER_NEW_AREAS: Final = "offer_new_areas"
+OWNERSHIP_PLAN: Final = "fpm_authoritative"
+OWNERSHIP_HA_NAMES: Final = "ha_authoritative_names"
+OWNERSHIP_BIDIRECTIONAL: Final = "bidirectional"
 
 DEFAULT_BASE_URL: Final = "https://api.imatrixsys.com"
 
@@ -33,6 +39,7 @@ OAUTH2_REVOKE_URL: Final = f"{DEFAULT_BASE_URL}/api/v1/oauth/revoke"
 OAUTH2_SCOPE: Final = "imatrix.read"
 # Spec 822 FR-30: asked for only when the user turns device sharing on.
 OAUTH2_SCOPE_HA_DEVICES: Final = "imatrix.ha_devices"
+OAUTH2_SCOPE_FLOOR_PLAN_WRITE: Final = "imatrix.floor_plan_write"
 WEB_APP_URL: Final = "https://cloud.imatrixsys.com"
 
 DEFAULT_SCAN_INTERVAL: Final = 60

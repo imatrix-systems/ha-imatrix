@@ -54,6 +54,8 @@ async def test_options_flow(
         "push": False,
         "floor_plan_id": "",
         "share_devices": False,
+        "ownership": "fpm_authoritative",
+        "offer_new_areas": False,
     }
     coordinator = init_integration.runtime_data.coordinator
     assert coordinator.update_interval.total_seconds() == 120

@@ -333,7 +333,9 @@
           "include_unmapped": "Include unmapped channels",
           "push": "Live updates",
           "floor_plan_id": "Organise Home Assistant from an iMatrix floor plan",
-          "share_devices": "Share my Home Assistant device list with iMatrix for floor plans"
+          "share_devices": "Share my Home Assistant device list with iMatrix for floor plans",
+          "ownership": "Names follow",
+          "offer_new_areas": "Offer new Home Assistant areas to the plan"
         },
         "data_description": {
           "group_ids": "Import only devices in these iMatrix groups and their subgroups. Leave empty for all devices.",
@@ -341,7 +343,9 @@
           "include_unmapped": "Also create entities for channels iMatrix has no unit or meaning for. They start disabled.",
           "push": "Keep a live connection to the iMatrix cloud so readings, positions and events arrive within seconds. When off, or when the server has no live stream, the integration polls.",
           "floor_plan_id": "Create floors, areas and labels from this plan and put devices in their rooms. You confirm every change in Repairs first.",
-          "share_devices": "Sends device names, makers, models, areas, integrations and entity types so these devices can be placed on the plan. No entity ids, states, network or radio addresses, or user names. Needs a key or sign-in that allows device sharing. Turning this off deletes the list from iMatrix."
+          "share_devices": "Sends device names, makers, models, areas, integrations and entity types so these devices can be placed on the plan. No entity ids, states, network or radio addresses, or user names. Needs a key or sign-in that allows device sharing. Turning this off deletes the list from iMatrix.",
+          "ownership": "Who wins when a floor or area is renamed. \"The iMatrix plan\" puts the plan's names back on the next sync. The other two send renames to the plan, which needs a key or sign-in allowed to update plans.",
+          "offer_new_areas": "Areas you create in Home Assistant are listed in the plan editor to add. Sends only the area name."
         }
       }
     }
@@ -451,6 +455,19 @@
     "share_devices_key": {
       "title": "Device sharing is not allowed for {title}",
       "description": "Home Assistant could not share its device list because the API key does not allow it. Create a key with the \"Home Assistant (read-only, with device list sharing)\" access in iMatrix, then reconfigure this entry with it, or turn device sharing off in the options."
+    },
+    "floor_plan_write_key": {
+      "title": "{title}: the API key cannot update floor plans",
+      "description": "Sending Home Assistant renames or new areas to the floor plan needs an API key made with the preset \"Home Assistant (read-only, with device list sharing and plan updates)\". Make a new key in iMatrix and reconfigure this entry, or set \"Names follow\" back to the iMatrix plan."
+    }
+  },
+  "selector": {
+    "ownership": {
+      "options": {
+        "fpm_authoritative": "The iMatrix plan",
+        "ha_authoritative_names": "Home Assistant names",
+        "bidirectional": "Both ways (renames apply, floor moves are listed for review)"
+      }
     }
   }
 }
