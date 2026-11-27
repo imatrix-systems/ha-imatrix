@@ -43,6 +43,8 @@ from .const import (
     CONF_AUTH_TYPE,
     CONF_BASE_URL,
     CONF_FLOOR_PLAN_ID,
+    CONF_OFFER_NEW_AREAS,
+    CONF_OWNERSHIP,
     CONF_PUSH,
     CONF_SHARE_DEVICES,
     DOMAIN,
@@ -50,6 +52,7 @@ from .const import (
     OAUTH2_CLIENT_ID,
     OAUTH2_CLIENT_SECRET,
     OAUTH2_REVOKE_URL,
+    OWNERSHIP_PLAN,
 )
 from .coordinator import IMatrixCoordinator
 from .floor_plan import FloorPlanManager, FloorPlanStore
@@ -120,7 +123,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> b
     plan_id = entry.options.get(CONF_FLOOR_PLAN_ID) or None
     share = bool(entry.options.get(CONF_SHARE_DEVICES, False)) and plan_id is not None
     if plan_id or CONF_SHARE_DEVICES in entry.options:
-        manager = FloorPlanManager(hass, entry, client, plan_id, share)
+        manager = FloorPlanManager(
+            hass,
+            entry,
+            client,
+            plan_id,
+            share,
+            ownership=entry.options.get(CONF_OWNERSHIP, OWNERSHIP_PLAN),
+            offer_new_areas=bool(entry.options.get(CONF_OFFER_NEW_AREAS, False)),
+        )
         entry.runtime_data.floor_plan = manager
         entry.async_create_background_task(
             hass, manager.async_start(), f"{DOMAIN}_floor_plan_{entry.entry_id}"

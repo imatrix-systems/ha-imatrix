@@ -52,6 +52,8 @@ from .const import (
     CONF_FLOOR_PLAN_ID,
     CONF_GROUP_IDS,
     CONF_INCLUDE_UNMAPPED,
+    CONF_OFFER_NEW_AREAS,
+    CONF_OWNERSHIP,
     CONF_PUSH,
     CONF_SCAN_INTERVAL,
     CONF_SHARE_DEVICES,
@@ -63,7 +65,11 @@ from .const import (
     OAUTH2_CLIENT_ID,
     OAUTH2_CLIENT_SECRET,
     OAUTH2_SCOPE,
+    OAUTH2_SCOPE_FLOOR_PLAN_WRITE,
     OAUTH2_SCOPE_HA_DEVICES,
+    OWNERSHIP_BIDIRECTIONAL,
+    OWNERSHIP_HA_NAMES,
+    OWNERSHIP_PLAN,
     REQUIRED_PERMISSIONS,
 )
 from .helpers import StaticTokenAuth, create_api_key_client
@@ -116,11 +122,19 @@ class IMatrixConfigFlow(
     @property
     def extra_authorize_data(self) -> dict[str, Any]:
         """Ask for the sharing scope on reauth when sharing is on (spec 822 FR-30)."""
-        if self.source == SOURCE_REAUTH and self._get_reauth_entry().options.get(
-            CONF_SHARE_DEVICES
+        if self.source != SOURCE_REAUTH:
+            return {}
+        options = self._get_reauth_entry().options
+        scopes = [OAUTH2_SCOPE]
+        if options.get(CONF_SHARE_DEVICES):
+            scopes.append(OAUTH2_SCOPE_HA_DEVICES)
+        # Spec 822 FR-44: plan updates from HA need their own scope.
+        if (
+            options.get(CONF_OFFER_NEW_AREAS)
+            or options.get(CONF_OWNERSHIP, OWNERSHIP_PLAN) != OWNERSHIP_PLAN
         ):
-            return {"scope": f"{OAUTH2_SCOPE} {OAUTH2_SCOPE_HA_DEVICES}"}
-        return {}
+            scopes.append(OAUTH2_SCOPE_FLOOR_PLAN_WRITE)
+        return {"scope": " ".join(scopes)} if len(scopes) > 1 else {}
 
     @staticmethod
     @callback
@@ -319,6 +333,11 @@ class IMatrixOptionsFlow(OptionsFlowWithReload):
                     CONF_FLOOR_PLAN_ID: plan_id,
                     CONF_SHARE_DEVICES: bool(plan_id)
                     and bool(user_input.get(CONF_SHARE_DEVICES)),
+                    CONF_OWNERSHIP: user_input.get(CONF_OWNERSHIP, OWNERSHIP_PLAN)
+                    if plan_id
+                    else OWNERSHIP_PLAN,
+                    CONF_OFFER_NEW_AREAS: bool(plan_id)
+                    and bool(user_input.get(CONF_OFFER_NEW_AREAS)),
                 }
             )
         options = self.config_entry.options
@@ -371,6 +390,22 @@ class IMatrixOptionsFlow(OptionsFlowWithReload):
                 ): SelectSelector(SelectSelectorConfig(options=plan_choices)),
                 vol.Required(
                     CONF_SHARE_DEVICES, default=options.get(CONF_SHARE_DEVICES, False)
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_OWNERSHIP, default=options.get(CONF_OWNERSHIP, OWNERSHIP_PLAN)
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            OWNERSHIP_PLAN,
+                            OWNERSHIP_HA_NAMES,
+                            OWNERSHIP_BIDIRECTIONAL,
+                        ],
+                        translation_key="ownership",
+                    )
+                ),
+                vol.Required(
+                    CONF_OFFER_NEW_AREAS,
+                    default=options.get(CONF_OFFER_NEW_AREAS, False),
                 ): BooleanSelector(),
             }
         )

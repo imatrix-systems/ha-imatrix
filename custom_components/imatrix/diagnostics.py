@@ -50,6 +50,18 @@ async def async_get_config_entry_diagnostics(
             "reconnects": data.coordinator.push.stream.reconnects,
             "last_event_id": data.coordinator.push.stream.last_event_id,
         },
+        # Spec 822 FR-27, FR-47: the id map, ownership and registry capabilities.
+        "floor_plan": None
+        if data.floor_plan is None
+        else {
+            "plan_id": data.floor_plan.plan_id,
+            "ownership": data.floor_plan.ownership,
+            "offer_new_areas": data.floor_plan.offer_new_areas,
+            "capabilities": data.floor_plan.capabilities,
+            "id_map": {
+                k: v for k, v in data.floor_plan.store.data.items() if k != "card_token"
+            },
+        },
         "devices": {
             order[sn]: async_redact_data(asdict(device), TO_REDACT)
             for sn, device in snapshot.devices.items()

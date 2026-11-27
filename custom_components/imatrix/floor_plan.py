@@ -26,7 +26,7 @@ from homeassistant.helpers import label_registry as lr
 from homeassistant.helpers.storage import Store
 from pyimatrix import IMatrixPermissionError
 
-from .const import AUTH_TYPE_OAUTH2, CONF_AUTH_TYPE, DOMAIN
+from .const import AUTH_TYPE_OAUTH2, CONF_AUTH_TYPE, DOMAIN, OWNERSHIP_PLAN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -409,6 +409,7 @@ def _run_floor(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> No
             str(action.existing_id), name=data["name"], **kwargs
         )
     store.data["floors"][action.key] = floor.floor_id
+    store.data.setdefault("names", {})[floor.floor_id] = floor.name
 
 
 def _run_area(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> None:
@@ -436,6 +437,7 @@ def _run_area(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> Non
             labels=set(current.labels) | labels,
         )
     store.data["areas"][action.key] = area.id
+    store.data.setdefault("names", {})[area.id] = area.name
 
 
 def _run_action(hass: HomeAssistant, action: Action, store: FloorPlanStore) -> None:
@@ -524,13 +526,16 @@ class FloorPlanManager:
     registry change, and once a day. Turning sharing off withdraws the list.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - two options join the five bindings
         self,
         hass: HomeAssistant,
         entry: Any,
         client: Any,
         plan_id: str | None,
         share: bool,
+        *,
+        ownership: str = OWNERSHIP_PLAN,
+        offer_new_areas: bool = False,
     ) -> None:
         """Bind the entry, its client and the chosen plan."""
         self.hass = hass
@@ -542,6 +547,11 @@ class FloorPlanManager:
         self.pending: FloorPlanSync | None = None
         self.instance_id: str | None = None
         self.cards: Any = None
+        self.desired: Any = None
+        self.capabilities: dict[str, bool] = {}
+        self.ownership = ownership
+        self.offer_new_areas = offer_new_areas
+        self.tracker: Any = None
         self._unsubs: list[Any] = []
         self._share_timer: Any = None
         self._stopped = False
@@ -563,10 +573,17 @@ class FloorPlanManager:
         self.instance_id = await instance_id.async_get(self.hass)
         if self.plan_id:
             from .floor_plan_card import FloorPlanCards  # noqa: PLC0415
+            from .floor_plan_changes import (  # noqa: PLC0415
+                HaChangeTracker,
+                probe_capabilities,
+            )
 
             self.cards = FloorPlanCards(
                 self.hass, self.client, self.plan_id, self.store, self.instance_id
             )
+            self.capabilities = probe_capabilities()
+            self.tracker = HaChangeTracker(self, self.ownership, self.offer_new_areas)
+            self.tracker.start()
             await self.async_check()
             self._unsubs.append(
                 async_track_time_interval(
@@ -593,6 +610,8 @@ class FloorPlanManager:
     def async_stop(self) -> None:
         """Cancel listeners and timers; later uploads from this manager do nothing."""
         self._stopped = True
+        if self.tracker is not None:
+            self.tracker.stop()
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
@@ -623,6 +642,7 @@ class FloorPlanManager:
         except Exception as err:
             _LOGGER.debug("floor plan desired state unavailable: %s", err)
             return
+        self.desired = desired
         self.pending = build_sync(self.hass, desired, self.store)
         async_publish_issue(
             self.hass, self.entry.entry_id, self.entry.title, self.pending
@@ -684,11 +704,11 @@ class FloorPlanManager:
             self.store.data["shared"] = True
             await self.store.async_save()
 
-    def _async_permission_refused(self) -> None:
-        """FR-30: the credential lacks device sharing.
+    def _async_permission_refused(self, issue: str = "share_devices_key") -> None:
+        """FR-30, FR-44: the credential lacks sharing or plan updates.
 
-        A sign-in is asked to sign in again with the sharing scope. An API key needs
-        the sharing preset, which the repair explains.
+        A sign-in is asked to sign in again with the extra scope. An API key needs
+        the matching preset, which the repair explains.
         """
         if self.entry.data.get(CONF_AUTH_TYPE) == AUTH_TYPE_OAUTH2:
             self.entry.async_start_reauth(self.hass)
@@ -696,12 +716,32 @@ class FloorPlanManager:
         ir.async_create_issue(
             self.hass,
             DOMAIN,
-            f"share_devices_key_{self.entry.entry_id}",
+            f"{issue}_{self.entry.entry_id}",
             is_fixable=False,
             severity=ir.IssueSeverity.WARNING,
-            translation_key="share_devices_key",
+            translation_key=issue,
             translation_placeholders={"title": self.entry.title},
         )
+
+    async def async_send_changes(self, changes: list[dict[str, Any]]) -> None:
+        """FR-43: send what changed in HA, then recheck the plan."""
+        if self._stopped or not self.plan_id or self.desired is None:
+            return
+        try:
+            await self.client.post_floor_plan_ha_changes(
+                self.plan_id,
+                self.instance_id or "",
+                int(self.desired.revision),
+                changes,
+                self.capabilities,
+            )
+        except IMatrixPermissionError:
+            self._async_permission_refused("floor_plan_write_key")
+            return
+        except Exception as err:
+            _LOGGER.debug("floor plan changes not sent: %s", err)
+            return
+        await self.async_check()
 
     async def async_withdraw_devices(self) -> bool:
         """Delete the shared list in the cloud (FR-29)."""

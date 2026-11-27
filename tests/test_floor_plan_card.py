@@ -333,3 +333,21 @@ async def test_card_websocket_and_script(
     resp = await web.get("/imatrix_static/imatrix-floor-plan-card.js")
     assert resp.status == 200
     assert "imatrix-floor-plan-card" in await resp.text()
+
+
+async def test_diagnostics_show_the_floor_plan(
+    hass: HomeAssistant, plan_entry: MockConfigEntry, hass_client: Any
+) -> None:
+    """Spec 822 FR-27, FR-47: id map and capabilities in diagnostics, no token."""
+    from pytest_homeassistant_custom_component.components.diagnostics import (  # noqa: PLC0415
+        get_diagnostics_for_config_entry,
+    )
+
+    token = await plan_entry.runtime_data.floor_plan.cards.async_token()
+    diag = await get_diagnostics_for_config_entry(hass, hass_client, plan_entry)
+    plan = diag["floor_plan"]
+    assert plan["plan_id"] == "p1"
+    assert plan["ownership"] == "fpm_authoritative"
+    assert plan["capabilities"]["supports_floor_level"] is True
+    assert "card_token" not in plan["id_map"]
+    assert token not in str(diag)
