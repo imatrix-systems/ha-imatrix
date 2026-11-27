@@ -3,7 +3,7 @@
 Home Assistant integration for iMatrix environmental sensors (temperature, humidity and BLE probes) and
 vehicles (QConnect gateways with GPS, OBD-II and J1939), distributed through HACS.
 
-Status: beta (0.1.0). The design is iMatrix spec 817.
+Status: beta (0.1.2). The design is iMatrix spec 817.
 
 ## Install
 

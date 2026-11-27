@@ -1,3 +1,4 @@
+import dataclasses
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
@@ -24,7 +25,7 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.imatrix.const import DOMAIN
 
-from .conftest import load_latest, make_account
+from .conftest import load_devices, load_latest, make_account
 
 TRUCK = 1000000001
 FREEZER = 1000000002
@@ -260,6 +261,15 @@ async def test_no_devices_issue(
     await hass.async_block_till_done()
     issue_id = f"no_devices_{mock_config_entry.entry_id}"
     assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+
+    # Devices become visible later (a group grant, or the R647 backend fix). The
+    # first non-empty list must create entities, not be taken as the starting set.
+    mock_client.get_devices.side_effect = lambda **_: load_devices()
+    coordinator = mock_config_entry.runtime_data.coordinator
+    coordinator.data = dataclasses.replace(coordinator.data, server_time=None)
+    await _tick(hass, freezer)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+    assert hass.states.get("sensor.truck_12_connectivity") is not None
 
 
 async def test_rate_limit_issue(

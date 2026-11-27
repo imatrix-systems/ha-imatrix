@@ -103,7 +103,8 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         self.client = client
         self._since_refresh = 0
         self._force_refresh = False
-        self._known: set[int] = set()
+        # None until the first device list. An empty first list is still a first list.
+        self._known: set[int] | None = None
         self._event_cursor: int | None = None
         self._rate_limited_since: datetime | None = None
         self.backfill: StatisticsBackfill | None = None
@@ -382,7 +383,7 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
                 translation_key="no_devices",
                 translation_placeholders={"title": self.config_entry.title},
             )
-        if not self._known:
+        if self._known is None:
             self._known = current
             self.new_sns = set()
             return
@@ -445,7 +446,7 @@ def sync_device_registry(
             model=device.product_name,
             model_id=None if device.product_id is None else str(device.product_id),
             serial_number=str(device.sn),
-            sw_version=device.firmware,
+            sw_version=None if device.firmware is None else str(device.firmware),
             configuration_url=f"{WEB_APP_URL}/dashboard/devices/{device.sn}",
             via_device_id=via.id if via is not None else None,
         )
