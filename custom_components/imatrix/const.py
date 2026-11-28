@@ -48,6 +48,10 @@ MAX_SCAN_INTERVAL: Final = 1800
 MAX_BACKOFF: Final = timedelta(minutes=30)
 # While the live stream is up, poll only as a safety net.
 PUSH_POLL_INTERVAL: Final = timedelta(minutes=5)
+# A backend deploy drops requests for a minute or two. Keep the last values and retry
+# soon, and mark entities unavailable only after this many failed polls in a row.
+TRANSIENT_RETRY_INTERVAL: Final = timedelta(seconds=30)
+TRANSIENT_FAILURES_TOLERATED: Final = 4
 STREAM_ISSUE_AFTER: Final = timedelta(minutes=30)
 # Re-read the device list every N polls; new devices appear within N x interval.
 DEVICE_REFRESH_EVERY: Final = 10

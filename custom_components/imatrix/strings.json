@@ -108,7 +108,7 @@
       "message": "Could not connect to the iMatrix cloud."
     },
     "update_failed": {
-      "message": "Could not get data from the iMatrix cloud."
+      "message": "Could not get data from the iMatrix cloud: {error}"
     },
     "rate_limited": {
       "message": "The iMatrix cloud rate limit was reached. Polling slows down until it recovers."

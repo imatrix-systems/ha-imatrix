@@ -125,8 +125,15 @@ async def test_update_failure_and_recovery(
     mock_client: MagicMock,
     freezer: FrozenDateTimeFactory,
 ) -> None:
-    mock_client.get_latest.side_effect = IMatrixConnectionError("down")
+    coordinator = init_integration.runtime_data.coordinator
+    mock_client.get_latest.side_effect = IMatrixConnectionError("HTTP 502")
+    # A short outage (a backend deploy) keeps the last values and retries in 30 s.
     await _tick(hass, freezer)
+    assert hass.states.get("sensor.truck_12_odometer").state == "120455.2"
+    assert coordinator.update_interval == timedelta(seconds=30)
+    for _ in range(4):
+        await _tick(hass, freezer, 30)
+    # Still failing after the tolerated retries: now the entities go unavailable.
     assert hass.states.get("sensor.truck_12_odometer").state == STATE_UNAVAILABLE
     assert hass.states.get("sensor.truck_12_connectivity").state == STATE_UNAVAILABLE
 

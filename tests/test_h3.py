@@ -134,7 +134,9 @@ async def test_events_fire_and_update_faults(
     assert hass.states.get("event.truck_12_fault_codes").state == fired_at
     mock_client.get_latest.side_effect = IMatrixConnectionError("down")
     await _tick(hass, freezer)
-    assert hass.states.get("event.truck_12_fault_codes").state == "unavailable"
+    # A tolerated failure keeps the last snapshot: the event neither re-fires nor
+    # goes unavailable.
+    assert hass.states.get("event.truck_12_fault_codes").state == fired_at
     mock_client.get_latest.side_effect = lambda *_, **__: load_latest()
     await _tick(hass, freezer)
     assert hass.states.get("event.truck_12_fault_codes").state == fired_at

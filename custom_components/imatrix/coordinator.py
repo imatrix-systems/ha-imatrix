@@ -49,6 +49,8 @@ from .const import (
     MAX_EVENT_PAGES,
     PUSH_POLL_INTERVAL,
     RATE_LIMIT_ISSUE_AFTER,
+    TRANSIENT_FAILURES_TOLERATED,
+    TRANSIENT_RETRY_INTERVAL,
     WEB_APP_URL,
 )
 
@@ -103,6 +105,7 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         self.client = client
         self._since_refresh = 0
         self._force_refresh = False
+        self._failures = 0  # transient poll failures in a row
         # None until the first device list. An empty first list is still a first list.
         self._known: set[int] | None = None
         self._event_cursor: int | None = None
@@ -222,7 +225,9 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
             ) from err
         except IMatrixError as err:
             raise UpdateFailed(
-                translation_domain=DOMAIN, translation_key="update_failed"
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+                translation_placeholders={"error": str(err)},
             ) from err
 
     async def _async_update_data(self) -> IMatrixSnapshot:
@@ -237,10 +242,28 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
             raise UpdateFailed(
                 translation_domain=DOMAIN, translation_key="rate_limited"
             ) from err
+        except IMatrixConnectionError as err:
+            if self.data is None or self._failures >= TRANSIENT_FAILURES_TOLERATED:
+                raise UpdateFailed(
+                    translation_domain=DOMAIN,
+                    translation_key="update_failed",
+                    translation_placeholders={"error": str(err)},
+                ) from err
+            self._failures += 1
+            _LOGGER.warning(
+                "iMatrix poll failed (%s); keeping the last values, retrying in %s s",
+                err,
+                int(TRANSIENT_RETRY_INTERVAL.total_seconds()),
+            )
+            self.update_interval = TRANSIENT_RETRY_INTERVAL
+            return self.data
         except IMatrixError as err:
             raise UpdateFailed(
-                translation_domain=DOMAIN, translation_key="update_failed"
+                translation_domain=DOMAIN,
+                translation_key="update_failed",
+                translation_placeholders={"error": str(err)},
             ) from err
+        self._failures = 0
         self.update_interval = (
             PUSH_POLL_INTERVAL if self._push_connected else self._interval
         )
