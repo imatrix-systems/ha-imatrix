@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     EntityCategory,
+    UnitOfPressure,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -168,6 +169,11 @@ class IMatrixChannelSensor(IMatrixEntity, SensorEntity):
             options = KeyOptions(category=EntityCategory.DIAGNOSTIC)
         self._attr_device_class = device_class
         self._attr_native_unit_of_measurement = unit
+        if device_class is SensorDeviceClass.PRESSURE and "vpd" in (
+            f"{channel.key} {channel.name or ''}".lower()
+        ):
+            # Vapour pressure deficit is read in kPa whatever the unit system.
+            self._attr_suggested_unit_of_measurement = UnitOfPressure.KPA
         self._attr_state_class = options.state_class
         self._attr_entity_category = options.category
         self._attr_suggested_display_precision = (
@@ -204,6 +210,10 @@ class IMatrixChannelSensor(IMatrixEntity, SensorEntity):
         return reading.value
 
 
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
 class IMatrixConnectivitySensor(IMatrixEntity, SensorEntity):
     """Cloud check-in state. Stays available so it can show offline."""
 
@@ -231,6 +241,17 @@ class IMatrixConnectivitySensor(IMatrixEntity, SensorEntity):
             return None
         return connectivity.state.value
 
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        """Last and next expected check-in. Attributes add no logbook entries."""
+        connectivity = self.connectivity
+        if connectivity is None:
+            return {"last_seen": None, "next_expected": None}
+        return {
+            "last_seen": _iso(connectivity.last_seen),
+            "next_expected": _iso(connectivity.next_expected),
+        }
+
 
 class IMatrixLastSeenSensor(IMatrixEntity, SensorEntity):
     """When the device last checked in."""
@@ -238,6 +259,9 @@ class IMatrixLastSeenSensor(IMatrixEntity, SensorEntity):
     _attr_translation_key = "last_seen"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # It changes on every upload, and each change is a logbook entry. The
+    # connectivity sensor carries the same time as an attribute.
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: IMatrixCoordinator, sn: int) -> None:
         """Create the last-seen sensor of a device."""

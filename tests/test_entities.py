@@ -3,9 +3,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
+from pyimatrix import Channel
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.imatrix.const import DOMAIN
+from custom_components.imatrix.sensor import IMatrixChannelSensor
 
 TRUCK = "1000000001"
 FREEZER = "1000000002"
@@ -103,8 +105,35 @@ async def test_offline_device_unavailable(
 ) -> None:
     assert hass.states.get("sensor.imatrix_1000000003_room").state == STATE_UNAVAILABLE
     assert hass.states.get("sensor.imatrix_1000000003_connectivity").state == "offline"
-    assert hass.states.get("sensor.imatrix_1000000003_last_seen").state == (
-        "2026-11-01T00:00:00+00:00"
+    connectivity = hass.states.get("sensor.imatrix_1000000003_connectivity")
+    assert connectivity.attributes["last_seen"] == "2026-11-01T00:00:00+00:00"
+    # Last seen changes on every upload, so it starts disabled (no logbook spam).
+    registry = er.async_get(hass)
+    last_seen = registry.async_get_entity_id("sensor", DOMAIN, "1000000003_last_seen")
+    assert last_seen is not None
+    assert (
+        registry.async_get(last_seen).disabled_by
+        is er.RegistryEntryDisabler.INTEGRATION
+    )
+
+
+def test_vpd_suggests_kpa(init_integration: MockConfigEntry) -> None:
+    """VPD reads in kPa even when the unit system would show psi."""
+    coordinator = init_integration.runtime_data.coordinator
+    sn = next(iter(coordinator.data.devices))
+    vpd = Channel.from_dict(
+        {"sensorId": 9, "name": "Air VPD", "quantityKind": "pressure", "unit": "kPa"}
+    )
+    other = Channel.from_dict(
+        {"sensorId": 10, "name": "Tyre", "quantityKind": "pressure", "unit": "kPa"}
+    )
+    assert (
+        IMatrixChannelSensor(coordinator, sn, vpd).suggested_unit_of_measurement
+        == "kPa"
+    )
+    assert (
+        IMatrixChannelSensor(coordinator, sn, other).suggested_unit_of_measurement
+        is None
     )
 
 
