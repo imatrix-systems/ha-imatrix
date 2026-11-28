@@ -52,6 +52,7 @@ async def test_options_flow(
         CONF_GROUP_IDS: [10],
         CONF_SCAN_INTERVAL: 120,
         CONF_INCLUDE_UNMAPPED: True,
+        "follow_imatrix_config": True,
         "push": False,
         "floor_plan_id": "",
         "share_devices": False,

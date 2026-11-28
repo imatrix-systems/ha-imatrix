@@ -52,6 +52,29 @@ the gap in long-term statistics from iMatrix history.
 The actions `imatrix.get_faults`, `imatrix.get_trips` and `imatrix.get_history` return data for
 scripts and automations. Six automation blueprints are in `blueprints/automation/imatrix`.
 
+## Sensor visibility and order
+
+The integration follows the **Visibility** page of each device in iMatrix Cloud. A sensor hidden
+there starts disabled in Home Assistant, so its history and settings stay and you can still turn it
+on. A sensor removed from the device's list in iMatrix is removed here. When someone changes the
+page in iMatrix, Home Assistant applies the change within a minute with live updates on, or on the
+next poll without them. If you enable or disable a sensor in Home Assistant yourself, your choice
+stays. Calculated (virtual) sensors from iMatrix appear as sensors too.
+
+Home Assistant lists a device's sensors by name on its own pages, and an integration cannot change
+that. To see the iMatrix order, add the iMatrix dashboard: go to **Settings > Dashboards > Add
+dashboard > New dashboard from scratch**, open it, select **Edit dashboard** and then **Raw
+configuration editor**, and replace the contents with:
+
+```yaml
+strategy:
+  type: custom:imatrix
+```
+
+The dashboard shows one card per device with its visible sensors in the iMatrix order, and rebuilds
+itself every time it opens. Turn the option **Follow iMatrix visibility and order** off to keep
+every sensor enabled and stop following changes.
+
 ## Development
 
 Requires Python 3.14.2 or later and [uv](https://docs.astral.sh/uv/).

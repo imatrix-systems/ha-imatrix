@@ -50,6 +50,7 @@ from .const import (
     CONF_AUTH_TYPE,
     CONF_BASE_URL,
     CONF_FLOOR_PLAN_ID,
+    CONF_FOLLOW_IMATRIX,
     CONF_GROUP_IDS,
     CONF_INCLUDE_UNMAPPED,
     CONF_OFFER_NEW_AREAS,
@@ -327,6 +328,7 @@ class IMatrixOptionsFlow(OptionsFlowWithReload):
                     CONF_GROUP_IDS: [int(g) for g in user_input[CONF_GROUP_IDS]],
                     CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
                     CONF_INCLUDE_UNMAPPED: user_input[CONF_INCLUDE_UNMAPPED],
+                    CONF_FOLLOW_IMATRIX: user_input.get(CONF_FOLLOW_IMATRIX, True),
                     CONF_PUSH: user_input[CONF_PUSH],
                     # Spec 822 FR-23, FR-28: sharing needs a plan; no plan turns sharing
                     # off.
@@ -384,6 +386,10 @@ class IMatrixOptionsFlow(OptionsFlowWithReload):
                 vol.Required(
                     CONF_INCLUDE_UNMAPPED,
                     default=options.get(CONF_INCLUDE_UNMAPPED, False),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_FOLLOW_IMATRIX,
+                    default=options.get(CONF_FOLLOW_IMATRIX, True),
                 ): BooleanSelector(),
                 vol.Optional(
                     CONF_FLOOR_PLAN_ID, default=options.get(CONF_FLOOR_PLAN_ID, "")
