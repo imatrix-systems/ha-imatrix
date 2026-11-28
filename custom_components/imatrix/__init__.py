@@ -55,10 +55,12 @@ from .const import (
     OWNERSHIP_PLAN,
 )
 from .coordinator import IMatrixCoordinator
+from .dashboard import async_register_dashboard
 from .floor_plan import FloorPlanManager, FloorPlanStore
 from .floor_plan_card import FloorPlanSvgView, async_register_card
 from .helpers import create_api_key_client, create_token_client
 from .push import IMatrixPush
+from .reconcile import VisibilityStore
 from .services import async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
@@ -91,6 +93,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_setup_services(hass)
     hass.http.register_view(FloorPlanSvgView(hass))
     await async_register_card(hass)
+    await async_register_dashboard(hass)
     return True
 
 
@@ -113,6 +116,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> b
     coordinator = IMatrixCoordinator(hass, entry, client)
     coordinator.backfill = StatisticsBackfill(hass, entry, coordinator)
     await coordinator.backfill.async_load()
+    coordinator.visibility = VisibilityStore(hass, entry.entry_id)
+    await coordinator.visibility.async_load()
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = IMatrixData(
@@ -188,6 +193,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: IMatrixConfigEntry) -> 
     """Withdraw shared devices, drop the entry's repairs, revoke the OAuth2 grant."""
     await _async_withdraw_shared_devices(hass, entry)
     _delete_entry_issues(hass, entry)
+    await VisibilityStore(hass, entry.entry_id).async_remove()
     if entry.data.get(CONF_AUTH_TYPE) != AUTH_TYPE_OAUTH2:
         return
     token = entry.data.get("token", {}).get("refresh_token")

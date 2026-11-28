@@ -15,12 +15,13 @@ from homeassistant.const import (
     UnitOfPressure,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from pyimatrix import Channel, ChannelMode, ConnectivityState, Device, DeviceKind
 
 from . import IMatrixConfigEntry
-from .const import CONF_INCLUDE_UNMAPPED, MAX_FAULT_CODES
+from .const import CONF_FOLLOW_IMATRIX, CONF_INCLUDE_UNMAPPED, DOMAIN, MAX_FAULT_CODES
 from .coordinator import IMatrixCoordinator
 from .entity import IMatrixEntity
 from .units import channel_class_and_unit
@@ -101,22 +102,63 @@ def _should_create(device: Device, channel: Channel, include_unmapped: bool) -> 
     return channel.quantity_kind is not None or include_unmapped
 
 
+def base_enabled(device: Device, channel: Channel) -> bool:
+    """Whether a channel's entity starts enabled before iMatrix visibility applies."""
+    if channel.mode is ChannelMode.STATEFUL:
+        return channel.key not in EVENT_KEYS
+    options = KEYS.get(channel.key, KeyOptions())
+    # Vehicles carry hundreds of unmapped CAN signals; show only the mapped ones.
+    return options.enabled and (
+        channel.is_mapped or device.kind is not DeviceKind.VEHICLE
+    )
+
+
+def display_order(device: Device) -> list[Channel]:
+    """Spec 856 FR-13: channels in the iMatrix display order, then by sensor id."""
+    return sorted(
+        device.channels,
+        key=lambda c: (c.position is None, c.position or 0, c.sensor_id),
+    )
+
+
+def channel_unique_id(sn: int, channel: Channel) -> str:
+    """Return the unique id of a channel's sensor entity."""
+    return f"{sn}_{channel.sensor_id}"
+
+
 def build_sensors(
-    coordinator: IMatrixCoordinator, sns: set[int], include_unmapped: bool
+    coordinator: IMatrixCoordinator,
+    sns: set[int],
+    include_unmapped: bool,
+    follow: bool = False,
 ) -> list[SensorEntity]:
-    """Create sensor entities for the given devices."""
+    """Create sensor entities for the given devices.
+
+    With follow (spec 856), a channel hidden in iMatrix starts disabled, and the
+    enabled state of each new entity is recorded so a later iMatrix change never
+    overrides what the user does in Home Assistant (D2).
+    """
     entities: list[SensorEntity] = []
+    registry = er.async_get(coordinator.hass)
+    visibility = coordinator.visibility if follow else None
     for sn in sorted(sns):
         device = coordinator.data.devices[sn]
         entities.append(IMatrixConnectivitySensor(coordinator, sn))
         entities.append(IMatrixLastSeenSensor(coordinator, sn))
         if device.kind is DeviceKind.VEHICLE:
             entities.append(IMatrixActiveFaultsSensor(coordinator, sn))
-        entities.extend(
-            IMatrixChannelSensor(coordinator, sn, channel)
-            for channel in device.channels
-            if _should_create(device, channel, include_unmapped)
-        )
+        for channel in display_order(device) if follow else device.channels:
+            if not _should_create(device, channel, include_unmapped):
+                continue
+            entity = IMatrixChannelSensor(coordinator, sn, channel, follow=follow)
+            entities.append(entity)
+            uid = channel_unique_id(sn, channel)
+            if (
+                visibility is not None
+                and base_enabled(device, channel)
+                and registry.async_get_entity_id("sensor", DOMAIN, uid) is None
+            ):
+                visibility.set(uid, channel.visible)
     return entities
 
 
@@ -128,10 +170,11 @@ async def async_setup_entry(
     """Set up sensors, and add more when devices appear."""
     coordinator = entry.runtime_data.coordinator
     include_unmapped = entry.options.get(CONF_INCLUDE_UNMAPPED, False)
+    follow = entry.options.get(CONF_FOLLOW_IMATRIX, True)
 
     @callback
     def add(sns: set[int]) -> None:
-        async_add_entities(build_sensors(coordinator, sns, include_unmapped))
+        async_add_entities(build_sensors(coordinator, sns, include_unmapped, follow))
 
     add(set(coordinator.data.devices))
     entry.async_on_unload(coordinator.async_add_new_device_listener(add))
@@ -141,13 +184,21 @@ class IMatrixChannelSensor(IMatrixEntity, SensorEntity):
     """One channel of a device. unique_id uses sensorId, which iMatrix never reuses."""
 
     def __init__(
-        self, coordinator: IMatrixCoordinator, sn: int, channel: Channel
+        self,
+        coordinator: IMatrixCoordinator,
+        sn: int,
+        channel: Channel,
+        *,
+        follow: bool = False,
     ) -> None:
         """Map the channel's key and quantity kind onto HA sensor attributes."""
         super().__init__(coordinator, sn, str(channel.sensor_id))
         self.channel = channel
         device = coordinator.data.devices[sn]
         options = KEYS.get(channel.key, KeyOptions())
+        # Spec 856 D1: a sensor hidden in iMatrix starts disabled. This applies to
+        # new entities only; reconcile.py handles existing ones.
+        enabled = base_enabled(device, channel) and (channel.visible or not follow)
 
         if channel.is_mapped:
             self._attr_translation_key = channel.key
@@ -157,7 +208,7 @@ class IMatrixChannelSensor(IMatrixEntity, SensorEntity):
         if channel.mode is ChannelMode.STATEFUL:
             self._attr_device_class = SensorDeviceClass.ENUM
             self._attr_options = [self._label(s.value, s.label) for s in channel.states]
-            self._attr_entity_registry_enabled_default = channel.key not in EVENT_KEYS
+            self._attr_entity_registry_enabled_default = enabled
             return
 
         device_class, unit = channel_class_and_unit(channel)
@@ -176,15 +227,16 @@ class IMatrixChannelSensor(IMatrixEntity, SensorEntity):
             self._attr_suggested_unit_of_measurement = UnitOfPressure.KPA
         self._attr_state_class = options.state_class
         self._attr_entity_category = options.category
-        self._attr_suggested_display_precision = (
-            options.precision
-            if options.precision is not None
-            else DEFAULT_PRECISION.get(device_class)  # type: ignore[arg-type]
-        )
-        # Vehicles carry hundreds of unmapped CAN signals; show only the mapped ones.
-        self._attr_entity_registry_enabled_default = options.enabled and (
-            channel.is_mapped or device.kind is not DeviceKind.VEHICLE
-        )
+        if channel.decimals is not None:
+            # Spec 856 FR-20: a virtual sensor's display decimals from iMatrix.
+            self._attr_suggested_display_precision = channel.decimals
+        else:
+            self._attr_suggested_display_precision = (
+                options.precision
+                if options.precision is not None
+                else DEFAULT_PRECISION.get(device_class)  # type: ignore[arg-type]
+            )
+        self._attr_entity_registry_enabled_default = enabled
 
     @staticmethod
     def _label(value: int, label: str | None) -> str:
@@ -208,6 +260,17 @@ class IMatrixChannelSensor(IMatrixEntity, SensorEntity):
         if isinstance(reading.value, str):
             return None
         return reading.value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Spec 856 FR-16a: why a virtual sensor has no value."""
+        if not self.channel.virtual:
+            return None
+        state = self.state_data
+        reading = state.readings.get(self.channel.sensor_id) if state else None
+        if reading is None or reading.error_code is None:
+            return None
+        return {"virtual_error": reading.error_code}
 
 
 def _iso(value: datetime | None) -> str | None:

@@ -38,8 +38,11 @@ from pyimatrix import (
 from pyimatrix import Frame as StreamFrame
 
 from .const import (
+    CONF_FOLLOW_IMATRIX,
     CONF_GROUP_IDS,
+    CONF_INCLUDE_UNMAPPED,
     CONF_SCAN_INTERVAL,
+    CONFIG_REREAD_BATCH,
     DEFAULT_SCAN_INTERVAL,
     DEVICE_REFRESH_EVERY,
     DOMAIN,
@@ -58,6 +61,7 @@ if TYPE_CHECKING:
     from . import IMatrixConfigEntry
     from .backfill import StatisticsBackfill
     from .push import IMatrixPush
+    from .reconcile import VisibilityStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -117,6 +121,14 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         self.new_sns: set[int] = set()
         # Entities by device, so a stream frame updates one device, not the account.
         self._device_listeners: dict[int, list[CALLBACK_TYPE]] = {}
+        # Spec 856: devices whose iMatrix configuration changed, to read again.
+        self._config_pending: set[int] = set()
+        self.visibility: VisibilityStore | None = None
+
+    @property
+    def follows_config(self) -> bool:
+        """Spec 856 FR-18: follow the iMatrix sensor visibility and order."""
+        return bool(self.config_entry.options.get(CONF_FOLLOW_IMATRIX, True))
 
     @property
     def _group_ids(self) -> list[int] | None:
@@ -184,12 +196,15 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
             self._event_cursor = event.id
             if event.sn not in data.devices:
                 return
-            self.data = replace(
-                data,
-                faults=_apply_events(data.faults, (event,)),
-                events=(event,),
-            )
-            self._async_update_device(event.sn)
+            if event.type is EventType.DEVICE_CONFIG_CHANGED:
+                self._async_config_changed(event.sn, event.config_version)
+            else:
+                self.data = replace(
+                    data,
+                    faults=_apply_events(data.faults, (event,)),
+                    events=(event,),
+                )
+                self._async_update_device(event.sn)
             return
         if not isinstance(frame, (ValuesFrame, PositionFrame, ConnectivityFrame)):
             return
@@ -210,6 +225,18 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
             state = replace(state, connectivity=frame.connectivity)
         self.data = replace(data, states={**data.states, frame.sn: state}, events=())
         self._async_update_device(frame.sn)
+
+    @callback
+    def _async_config_changed(self, sn: int, version: str | None) -> None:
+        """Read a device again soon: its configuration changed in iMatrix (FR-15)."""
+        if not self.follows_config or self.data is None:
+            return
+        device = self.data.devices.get(sn)
+        if device is None or (version is not None and device.config_version == version):
+            return
+        self._config_pending.add(sn)
+        # The refresh debouncer folds several changes into one /devices?sns= call.
+        self.hass.async_create_task(self.async_request_refresh())
 
     async def _async_setup(self) -> None:
         """Start the event cursor at the newest event, so old events never replay."""
@@ -270,7 +297,9 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
         self._clear_rate_limit()
         if self.push is not None:
             self.push.async_check_health()
+        previous = self.data
         self._handle_device_changes(snapshot)
+        self._reconcile(previous, snapshot)
         if self.backfill is not None:
             # Fill first: entities from the previous snapshot exist by now.
             await self.backfill.async_step()
@@ -303,8 +332,25 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
             if unknown := set(latest.devices) - set(devices):
                 _LOGGER.debug("Latest named %d unknown devices", len(unknown))
                 self._force_refresh = True  # re-list devices on the next poll
+            if self.follows_config:
+                # FR-15: a configVersion in /latest that differs from the listed one.
+                self._config_pending |= {
+                    sn
+                    for sn, s in latest.devices.items()
+                    if sn in devices
+                    and s.config_version is not None
+                    and s.config_version != devices[sn].config_version
+                }
 
         events = await self._async_fetch_events(devices)
+        if self.follows_config:
+            self._config_pending |= {
+                e.sn
+                for e in events
+                if e.type is EventType.DEVICE_CONFIG_CHANGED
+                and e.config_version != devices[e.sn].config_version
+            }
+        devices = await self._async_reread_changed(devices)
         faults = {
             sn: f
             for sn, f in (previous.faults if previous else {}).items()
@@ -325,6 +371,24 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
             faults=faults,
             events=events,
         )
+
+    async def _async_reread_changed(
+        self, devices: dict[int, Device]
+    ) -> dict[int, Device]:
+        """Read the devices whose configuration changed, 500 serials per call."""
+        pending = sorted(sn for sn in self._config_pending if sn in devices)
+        self._config_pending.clear()
+        if not pending:
+            return devices
+        result = dict(devices)
+        for i in range(0, len(pending), CONFIG_REREAD_BATCH):
+            batch = pending[i : i + CONFIG_REREAD_BATCH]
+            wanted = set(batch)
+            for device in await self.client.get_devices(sns=batch):
+                if device.sn in wanted:
+                    result[device.sn] = device
+        _LOGGER.debug("Read %d devices again after an iMatrix change", len(pending))
+        return result
 
     async def _async_fetch_events(
         self, devices: dict[int, Device]
@@ -363,6 +427,45 @@ class IMatrixCoordinator(DataUpdateCoordinator[IMatrixSnapshot]):
                 lamps=fetched.lamps, faults={f.id: f for f in fetched.faults}
             )
         return result
+
+    @callback
+    def _reconcile(
+        self, previous: IMatrixSnapshot | None, snapshot: IMatrixSnapshot
+    ) -> None:
+        """Spec 856 FR-14 to FR-16: follow iMatrix visibility changes.
+
+        On the first snapshot every device is checked (changes made while Home
+        Assistant was down, and upgrades from 0.1.x), without the reload for new
+        channels: the platforms are about to create them.
+        """
+        if not self.follows_config or self.visibility is None:
+            return
+        # Imported here: sensor imports this module.
+        from .reconcile import Reconciler  # noqa: PLC0415
+        from .sensor import _should_create, base_enabled  # noqa: PLC0415
+
+        include_unmapped = self.config_entry.options.get(CONF_INCLUDE_UNMAPPED, False)
+        reconciler = Reconciler(
+            self.hass,
+            self.config_entry,
+            self.visibility,
+            lambda d, c: _should_create(d, c, include_unmapped),
+            base_enabled,
+        )
+        first = previous is None
+        reload = False
+        for sn, device in snapshot.devices.items():
+            old = None if previous is None else previous.devices.get(sn)
+            if not first and (
+                old is None or old.config_version == device.config_version
+            ):
+                continue
+            reload |= reconciler.async_device(
+                old, device, detect_added=not first
+            ).reload
+        if reload:
+            _LOGGER.debug("iMatrix sensors were added or changed; reloading the entry")
+            self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
 
     def _back_off(self, retry_after: float | None) -> None:
         current = self.update_interval or self._interval

@@ -11,6 +11,8 @@ CONF_ADVANCED: Final = "advanced"
 CONF_GROUP_IDS: Final = "group_ids"
 CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_INCLUDE_UNMAPPED: Final = "include_unmapped"
+# Spec 856: follow the iMatrix sensor visibility and order (default on).
+CONF_FOLLOW_IMATRIX: Final = "follow_imatrix_config"
 CONF_PUSH: Final = "push"
 # Spec 822 FR-23, FR-28: floor plan sync (plan id, empty for off) and opt-in device list
 # sharing.
@@ -55,6 +57,8 @@ TRANSIENT_FAILURES_TOLERATED: Final = 4
 STREAM_ISSUE_AFTER: Final = timedelta(minutes=30)
 # Re-read the device list every N polls; new devices appear within N x interval.
 DEVICE_REFRESH_EVERY: Final = 10
+# Spec 856: devices re-read per /devices?sns= call after a configuration change.
+CONFIG_REREAD_BATCH: Final = 500
 
 # Event feed: pages read per poll before yielding to the next poll.
 MAX_EVENT_PAGES: Final = 5
